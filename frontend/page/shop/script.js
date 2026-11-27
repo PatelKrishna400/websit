@@ -107,7 +107,7 @@ const SHOP_ITEMS = {
     btnId: 'btnWatchAdCoins',
     cardId: 'adCoinsCard',
     category: 'coin',
-    defaultHtml: 'Watch Ad 📺',
+    defaultHtml: '<span>Watch Ad</span><img src="../../assets/stickers/sticker-tv.png" alt="Ad" class="ui-3d-sticker-xs" />',
     costCoins: 0,
     costStars: 0,
     rewardType: 'coins',
@@ -117,7 +117,7 @@ const SHOP_ITEMS = {
     btnId: 'btnBuyCoins50',
     cardId: 'starCard50',
     category: 'star',
-    defaultHtml: '3,000 🪙',
+    defaultHtml: '3,000 <img src="../../assets/stickers/sticker-coin.png" alt="Coins" class="ui-3d-sticker-xs" />',
     costCoins: 3000,
     costStars: 0,
     rewardType: 'stars',
@@ -127,7 +127,7 @@ const SHOP_ITEMS = {
     btnId: 'btnBuyCoins50',
     cardId: 'starCard50',
     category: 'star',
-    defaultHtml: '3,000 🪙',
+    defaultHtml: '3,000 <img src="../../assets/stickers/sticker-coin.png" alt="Coins" class="ui-3d-sticker-xs" />',
     costCoins: 3000,
     costStars: 0,
     rewardType: 'stars',
@@ -137,7 +137,7 @@ const SHOP_ITEMS = {
     btnId: 'btnBuyCoins100',
     cardId: 'starCard100',
     category: 'star',
-    defaultHtml: '6,000 🪙',
+    defaultHtml: '6,000 <img src="../../assets/stickers/sticker-coin.png" alt="Coins" class="ui-3d-sticker-xs" />',
     costCoins: 6000,
     costStars: 0,
     rewardType: 'stars',
@@ -147,7 +147,7 @@ const SHOP_ITEMS = {
     btnId: 'btnBuyCoins100',
     cardId: 'starCard100',
     category: 'star',
-    defaultHtml: '6,000 🪙',
+    defaultHtml: '6,000 <img src="../../assets/stickers/sticker-coin.png" alt="Coins" class="ui-3d-sticker-xs" />',
     costCoins: 6000,
     costStars: 0,
     rewardType: 'stars',
@@ -157,7 +157,7 @@ const SHOP_ITEMS = {
     btnId: 'btnBuyCoins500',
     cardId: 'starCard500',
     category: 'star',
-    defaultHtml: '30,000 🪙',
+    defaultHtml: '30,000 <img src="../../assets/stickers/sticker-coin.png" alt="Coins" class="ui-3d-sticker-xs" />',
     costCoins: 30000,
     costStars: 0,
     rewardType: 'stars',
@@ -167,7 +167,7 @@ const SHOP_ITEMS = {
     btnId: 'btnBuyCoins500',
     cardId: 'starCard500',
     category: 'star',
-    defaultHtml: '30,000 🪙',
+    defaultHtml: '30,000 <img src="../../assets/stickers/sticker-coin.png" alt="Coins" class="ui-3d-sticker-xs" />',
     costCoins: 30000,
     costStars: 0,
     rewardType: 'stars',
@@ -177,7 +177,7 @@ const SHOP_ITEMS = {
     btnId: 'btnWatchAdTickets',
     cardId: 'adTicketsCard',
     category: 'ticket',
-    defaultHtml: 'Watch Ad 📺',
+    defaultHtml: '<span>Watch Ad</span><img src="../../assets/stickers/sticker-tv.png" alt="Ad" class="ui-3d-sticker-xs" />',
     costCoins: 0,
     costStars: 0,
     rewardType: 'tickets',
@@ -187,7 +187,7 @@ const SHOP_ITEMS = {
     btnId: 'btnBuyTickets100',
     cardId: 'ticketCard100',
     category: 'ticket',
-    defaultHtml: '150 ⭐',
+    defaultHtml: '150 <img src="../../assets/stickers/sticker-star.png" alt="Stars" class="ui-3d-sticker-xs" />',
     costCoins: 0,
     costStars: 150,
     rewardType: 'tickets',
@@ -197,7 +197,7 @@ const SHOP_ITEMS = {
     btnId: 'btnBuyTickets500',
     cardId: 'ticketCard500',
     category: 'ticket',
-    defaultHtml: '750 ⭐',
+    defaultHtml: '750 <img src="../../assets/stickers/sticker-star.png" alt="Stars" class="ui-3d-sticker-xs" />',
     costCoins: 0,
     costStars: 750,
     rewardType: 'tickets',
@@ -207,7 +207,7 @@ const SHOP_ITEMS = {
     btnId: 'btnBuyTickets1000',
     cardId: 'ticketCard1000',
     category: 'ticket',
-    defaultHtml: '1,500 ⭐',
+    defaultHtml: '1,500 <img src="../../assets/stickers/sticker-star.png" alt="Stars" class="ui-3d-sticker-xs" />',
     costCoins: 0,
     costStars: 1500,
     rewardType: 'tickets',
@@ -248,6 +248,9 @@ function startItemUnlock(itemId, durationMs = SHOP_UNLOCK_DURATION_MS) {
   unlocks[itemId] = Date.now() + durationMs;
   saveShopUnlocks(unlocks);
   updateShopTimers();
+  if (typeof window.saveCurrentProfileToFirestore === 'function') {
+    try { window.saveCurrentProfileToFirestore(); } catch (e) {}
+  }
 }
 
 function formatRemainingTime(ms) {
@@ -280,7 +283,7 @@ function updateShopTimers() {
       btn.disabled = true;
       btn.classList.add('btn-disabled-cooldown');
       btn.classList.remove('btn-affordable');
-      btn.innerHTML = `<span class="cooldown-timer-tab">⏱️ ${formatted}</span>`;
+      btn.innerHTML = `<span class="cooldown-timer-tab"><img src="../../assets/stickers/sticker-timer.png" alt="" class="ui-3d-sticker-xs" /> ${formatted}</span>`;
     } else {
       // Cooldown ended: hide the timer once the unlock period ends!
       if (btn.classList.contains('btn-disabled-cooldown')) {
@@ -369,8 +372,21 @@ function updateDisplays() {
   const displayTickets = document.getElementById('shopTicketsDisplay');
   if (displayTickets) displayTickets.textContent = userTickets.toLocaleString();
 
+  const topTickets = document.getElementById('shopTicketsDisplayTop');
+  if (topTickets) topTickets.textContent = userTickets.toLocaleString();
+
   const avatarEl = typeof document.querySelector === 'function' ? document.querySelector('.user-avatar') : null;
-  if (avatarEl) avatarEl.textContent = localStorage.getItem('player_avatar') || '🛍️';
+  if (avatarEl) {
+    const rawAv = localStorage.getItem('player_avatar') || 'avatar-1.png';
+    if (typeof window.renderPlayerAvatarEl === 'function') {
+      window.renderPlayerAvatarEl(avatarEl, rawAv, 36);
+    } else {
+      const m = String(rawAv).match(/avatar-([1-8])\.png/i);
+      avatarEl.style.background = 'transparent';
+      avatarEl.style.border = 'none';
+      avatarEl.innerHTML = `<img src="../../assets/avatars/${m ? 'avatar-' + m[1] + '.png' : 'avatar-1.png'}" alt="Avatar" class="sticker-3d-avatar-img" style="width:36px;height:36px;object-fit:contain;display:block;" />`;
+    }
+  }
 
   const nameEl = typeof document.querySelector === 'function' ? document.querySelector('.user-name') : null;
   if (nameEl) nameEl.textContent = localStorage.getItem('player_username') || 'Player';
@@ -755,27 +771,35 @@ function buyCoinsWithStars(coinAmount, starCost, itemId = 'coin_pack_' + starCos
   }
 
   try {
-    // 3. Deduct stars
-    const newStars = currentStars - starCost;
-    userStars = newStars;
-    localStorage.setItem('task_game_stars', newStars.toString());
-    localStorage.setItem('user_stars', newStars.toString());
-    if (window.firebaseSync && typeof window.firebaseSync.setStars === 'function') {
-      window.firebaseSync.setStars(newStars);
-    }
+    if (window.__shopPurchaseBusy) return false;
+    window.__shopPurchaseBusy = true;
 
-    // 4. Add coins
+    // 3. Deduct stars & Add coins (atomic via Firebase when active)
+    const newStars = currentStars - starCost;
     const currentCoins = parseInt(localStorage.getItem('task_game_coins') || localStorage.getItem('user_coins') || localStorage.getItem('task_game_coins_alt') || '0', 10) || 0;
     const newCoins = currentCoins + coinAmount;
+
+    userStars = newStars;
     userCoins = newCoins;
+    localStorage.setItem('task_game_stars', newStars.toString());
+    localStorage.setItem('user_stars', newStars.toString());
     localStorage.setItem('task_game_coins', newCoins.toString());
     localStorage.setItem('user_coins', newCoins.toString());
     localStorage.setItem('task_game_coins_alt', newCoins.toString());
-    if (window.firebaseSync && typeof window.firebaseSync.setCoins === 'function') {
-      window.firebaseSync.setCoins(newCoins);
+
+    if (window.Firebase && typeof window.Firebase.atomicBalanceMutation === 'function') {
+      awaitResultOrSync(window.Firebase.atomicBalanceMutation({
+        deltaStars: -starCost,
+        deltaCoins: coinAmount,
+        reason: `Shop: Buy ${coinAmount} Coins`,
+        txId: `shop_${itemId}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+      }));
+    } else if (window.firebaseSync) {
+      if (typeof window.firebaseSync.setStars === 'function') window.firebaseSync.setStars(newStars);
+      if (typeof window.firebaseSync.setCoins === 'function') window.firebaseSync.setCoins(newCoins);
     }
 
-    // 5. Audio and UI feedback (no cooldown timer for Coin purchases)
+    // 4. Audio and UI feedback (no cooldown timer for Coin purchases)
     shopSfx.playPurchase();
     syncAllBalances(newCoins, newStars, undefined);
 
@@ -787,6 +811,8 @@ function buyCoinsWithStars(coinAmount, starCost, itemId = 'coin_pack_' + starCos
     alert(`⚠️ Purchase Failed!\n\nAn unexpected error occurred: ${error.message || 'Transaction could not be completed'}.\n\nPlease try again.`);
     showShopToast('⚠️ Purchase failed. Please try again.', 'error');
     return false;
+  } finally {
+    window.__shopPurchaseBusy = false;
   }
 }
 window.buyCoinsWithStars = buyCoinsWithStars;

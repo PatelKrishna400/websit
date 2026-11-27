@@ -1,3418 +1,110 @@
-// Profile & Admin Portal Script
-// Credentials: Username: 400 @123 | Password: 0911 (Masked, not shown on UI)
 
-// Sunflower removed
-const TASKS_STORAGE_KEY = 'task_game_tasks';
-const CLAIMS_STORAGE_KEY = 'task_game_claims';
-const WITHDRAW_STORAGE_KEY = 'task_game_withdrawals';
-const USERS_STORAGE_KEY = 'task_game_users';
-const SYNC_FLAG_KEY = 'task_game_sync_flag';
 const SYNC_CHANNEL_NAME = 'nova_task_sync';
-const TOTAL_TASKS_KEY = 'task_game_total_tasks';
-const EVENT_TASKS_KEY = 'task_game_event_tasks';
-
-// Real players synced dynamically from Firebase (all demo users removed)
-const CANONICAL_TASK_USERS = [];
-
-const DEMO_USER_IDS = new Set(['usr_2', 'usr_3', 'usr_4', 'usr_5', 'usr_6']);
-const DEMO_USER_NAMES = new Set(['User 2', 'CyberHunter', 'NeonBlaze', 'ShadowNova', 'PixelMaster']);
-
-function isDemoUser(u) {
-  if (!u) return true;
-  if (DEMO_USER_IDS.has(u.id)) return true;
-  if (DEMO_USER_NAMES.has(u.name)) return true;
-  if (typeof u.id === 'string' && u.id.startsWith('mock_')) return true;
-  return false;
-}
-
-const DEFAULT_USERS = [];
-const DEFAULT_WITHDRAWALS = [];
-
-// Storage initialization: seed missing keys at 0 without overwriting earned player data
-try {
-  if (!localStorage.getItem('task_game_zero_start_clean_v7')) {
-    const defaults = {
-      task_game_coins: '0', task_game_stars: '0', user_coins: '0', user_stars: '0',
-      task_game_total_tasks: '0', task_game_total_tasks_completed: '0', completed_tasks_count: '0',
-      task_game_ads_watched_count: '0', ads_watched_count: '0',
-      task_game_event_tasks: '0', task_game_event_tasks_count: '0',
-      task_coins_won_today: '0', task_games_played_today: '0', task_win_streak: '0',
-      task_game_users: '[]', task_game_withdrawals: '[]', task_game_referrals_list: '[]',
-      task_game_stars_transactions: '[]', task_game_claims: '{}'
-    };
-    Object.entries(defaults).forEach(([k, v]) => {
-      if (localStorage.getItem(k) === null) localStorage.setItem(k, v);
-    });
-    const existingName = localStorage.getItem('player_username');
-    if (!existingName || existingName.toLowerCase().includes('nova')) {
-      localStorage.setItem('player_username', 'Player');
-    }
-    if (!localStorage.getItem('player_avatar')) localStorage.setItem('player_avatar', '⚡');
-    localStorage.setItem('task_game_zero_start_clean_v7', 'true');
-  }
-} catch (e) {}
-
-// Ensure users storage is valid array
-try {
-  const rawUsers = localStorage.getItem(USERS_STORAGE_KEY);
-  if (rawUsers) {
-    const parsed = JSON.parse(rawUsers);
-    if (!Array.isArray(parsed)) localStorage.setItem(USERS_STORAGE_KEY, '[]');
-  }
-  const rawWd = localStorage.getItem(WITHDRAW_STORAGE_KEY);
-  if (rawWd && (rawWd.includes('WD-8491') || rawWd.includes('WD-8490') || rawWd.includes('AMZN-7492'))) {
-    localStorage.setItem(WITHDRAW_STORAGE_KEY, '[]');
-  }
-} catch (e) {}
-
-// Global active tab state ('profile' | 'admin')
-let activeProfileTab = 'profile';
-let currentAdminSubView = 'tasks';
-let tasksData = [];
-let withdrawalsData = [];
-let usersData = [];
-let currentWdFilter = 'all';
-let adminEventInterval = null;
+const SYNC_FLAG_KEY = 'task_game_last_sync';
+const TASKS_STORAGE_KEY = 'task_game_tasks';
+const USERS_STORAGE_KEY = 'task_game_users';
+const WITHDRAW_STORAGE_KEY = 'task_game_withdrawals';
+const EVENT_STORAGE_KEY = 'task_game_leaderboard_event';
+const EVENT_TASKS_KEY = 'task_game_event_tasks_count';
+const TOTAL_TASKS_KEY = 'task_game_total_tasks_completed';
 let syncChannel = null;
-
-// Initialize BroadcastChannel
 try {
   syncChannel = new BroadcastChannel(SYNC_CHANNEL_NAME);
-  syncChannel.onmessage = (event) => {
-    loadAllAdminData();
-    renderCurrentAdminSubView();
+  syncChannel.onmessage = () => {
+    if (typeof updateAdminLiveDisplays === 'function') updateAdminLiveDisplays();
+    if (typeof updateProfileOverviewStats === 'function') updateProfileOverviewStats();
   };
-} catch (e) {
-  console.warn('BroadcastChannel not supported');
-}
+} catch (e) {}
 
-/**
- * Check if admin is currently authenticated in session or storage
- */
-// Compulsory Admin Lock: Always locked by default upon opening
-try {
-  localStorage.removeItem('admin_authenticated');
-} catch(e) {}
-
-function isAdminLoggedIn() {
-  try {
-    return sessionStorage.getItem('admin_authenticated') === 'true';
-  } catch (e) {
-    return false;
-  }
-}
-window.isAdminLoggedIn = isAdminLoggedIn;
-
-/**
- * Open Admin with Compulsory Lock:
- * Any time Admin is opened from menu, tab, or link, active session is invalidated
- * and administrator credentials are required.
- */
 function openAdminCompulsoryLock() {
-  try {
-    sessionStorage.removeItem('admin_authenticated');
-    localStorage.removeItem('admin_authenticated');
-  } catch(e) {}
-
-  const adminStatusTag = document.getElementById('adminStatusTag');
-  if (adminStatusTag) adminStatusTag.textContent = '🔒';
-
-  const passField = document.getElementById('adminPassword');
-  const errBox = document.getElementById('adminLoginError');
-  if (passField) passField.value = '';
-  if (errBox) errBox.style.display = 'none';
-
-  switchProfileTab('admin');
+  window.location.href = '../../../admin/index.html';
 }
 window.openAdminCompulsoryLock = openAdminCompulsoryLock;
 
-/**
- * Switch top-level profile tab between 'profile' and 'admin'
- * @param {'profile'|'admin'} tabKey
- */
 function switchProfileTab(tabKey) {
-  activeProfileTab = tabKey;
-
-  const topNavSwitcher = document.getElementById('topNavSwitcher');
-  const tabBtnProfile = document.getElementById('tabBtnProfile');
-  const tabBtnAdmin = document.getElementById('tabBtnAdmin');
-  const menuProfile = document.getElementById('menuProfile');
-  const menuAdminBtn = document.getElementById('menuAdminBtn');
-  const adminStatusTag = document.getElementById('adminStatusTag');
-
-  const panelProfile = document.getElementById('panelUserProfile') || document.getElementById('panelProfileView');
-  const panelAdminLogin = document.getElementById('panelAdminLogin');
-  const panelAdminDashboard = document.getElementById('panelAdminDashboard') || document.getElementById('panelAdminView');
-
-  const belowMenu = document.getElementById('belowMenuBar');
-  const adminMenu = document.getElementById('adminMenuBar');
-  const profileMainHeader = document.getElementById('profileMainHeader');
-  const adminTopHeaderBar = document.getElementById('adminTopHeaderBar');
-
-  const authenticated = isAdminLoggedIn();
-
-  if (adminStatusTag) {
-    adminStatusTag.textContent = authenticated ? '🔓' : '🔒';
-  }
-
   if (tabKey === 'admin') {
-    if (tabBtnProfile) tabBtnProfile.classList.remove('active');
-    if (tabBtnAdmin) tabBtnAdmin.classList.add('active');
-    if (menuProfile) menuProfile.classList.remove('active');
-    if (menuAdminBtn) menuAdminBtn.classList.add('active');
-
-    if (authenticated) {
-      // Ensure popup modal & full-page subviews start closed cleanly
-      closeCategoryTaskPopup();
-
-      // Remove/hide top switcher & player header clutter in Admin mode; keep clean minimal header + circle ⚙️ Settings
-      if (profileMainHeader) profileMainHeader.style.display = 'none';
-      if (topNavSwitcher) topNavSwitcher.style.display = 'none';
-      if (adminTopHeaderBar) adminTopHeaderBar.style.display = 'flex';
-
-      if (panelProfile) panelProfile.style.display = 'none';
-      if (panelAdminLogin) panelAdminLogin.style.display = 'none';
-      if (panelAdminDashboard) panelAdminDashboard.style.display = 'block';
-
-      if (belowMenu) belowMenu.style.display = 'none';
-      if (adminMenu) adminMenu.style.display = 'flex';
-
-      loadAllAdminData();
-      switchAdminSubView(currentAdminSubView || 'tasks');
-    } else {
-      if (profileMainHeader) profileMainHeader.style.display = 'flex';
-      if (topNavSwitcher) topNavSwitcher.style.display = 'flex';
-      if (adminTopHeaderBar) adminTopHeaderBar.style.display = 'none';
-
-      if (panelProfile) panelProfile.style.display = 'none';
-      if (panelAdminLogin) panelAdminLogin.style.display = 'block';
-      if (panelAdminDashboard) panelAdminDashboard.style.display = 'none';
-
-      if (belowMenu) belowMenu.style.display = 'flex';
-      if (adminMenu) adminMenu.style.display = 'none';
-
-      const userField = document.getElementById('adminUsername');
-      if (userField) setTimeout(() => userField.focus(), 100);
-    }
-  } else {
-    // Default: 'profile' view - compulsory lock: leaving admin locks session
-    try {
-      sessionStorage.removeItem('admin_authenticated');
-      localStorage.removeItem('admin_authenticated');
-    } catch(e) {}
-    if (adminStatusTag) adminStatusTag.textContent = '🔒';
-
-    // Show top header & switcher tabs in Profile mode
-    if (profileMainHeader) profileMainHeader.style.display = 'flex';
-    if (topNavSwitcher) topNavSwitcher.style.display = 'flex';
-    if (adminTopHeaderBar) adminTopHeaderBar.style.display = 'none';
-
-    if (tabBtnProfile) tabBtnProfile.classList.add('active');
-    if (tabBtnAdmin) tabBtnAdmin.classList.remove('active');
-    if (menuProfile) menuProfile.classList.add('active');
-    if (menuAdminBtn) menuAdminBtn.classList.remove('active');
-
-    if (panelProfile) panelProfile.style.display = 'block';
-    if (panelAdminLogin) panelAdminLogin.style.display = 'none';
-    if (panelAdminDashboard) panelAdminDashboard.style.display = 'none';
-
-    if (belowMenu) belowMenu.style.display = 'flex';
-    if (adminMenu) adminMenu.style.display = 'none';
+    window.location.href = '../../../admin/index.html';
   }
 }
 window.switchProfileTab = switchProfileTab;
 
-/**
- * Handle submission of the Admin Login form on Profile page
- */
-function handleAdminLogin(event) {
-  if (event && typeof event.preventDefault === 'function') {
-    event.preventDefault();
-  }
-
-  const userField = document.getElementById('adminUsername');
-  const passField = document.getElementById('adminPassword');
-  const errBox = document.getElementById('adminLoginError');
-
-  const rawUser = userField ? userField.value.trim() : '';
-  const rawPass = passField ? passField.value.trim() : '';
-
-  const normalizedUser = rawUser.replace(/\s+/g, ' ');
-  const compactUser = rawUser.replace(/\s+/g, '');
-  const lowerUser = rawUser.toLowerCase();
-
-  const isUserValid = (
-    normalizedUser === '400 @123' || 
-    compactUser === '400@123' || 
-    lowerUser === 'admin' || 
-    lowerUser === 'root' ||
-    lowerUser === 'administrator'
-  );
-  const isPassValid = (
-    rawPass === '2026' ||
-    rawPass === '0911' || 
-    rawPass === 'admin123' || 
-    rawPass === '1109' || 
-    rawPass === 'admin'
-  );
-
-  if (isUserValid && isPassValid) {
-    if (errBox) errBox.style.display = 'none';
-    try {
-      sessionStorage.setItem('admin_authenticated', 'true');
-      localStorage.setItem('admin_authenticated', 'true');
-    } catch (e) {}
-
-    const adminStatusTag = document.getElementById('adminStatusTag');
-    if (adminStatusTag) adminStatusTag.textContent = '🔓';
-
-    showToast('🎉 Welcome Administrator! Admin Control Panel Unlocked 🛡️');
-    switchProfileTab('admin');
-  } else {
-    if (errBox) {
-      errBox.style.display = 'flex';
-    }
-    if (passField) {
-      passField.value = '';
-      passField.focus();
-    }
-    showToast('⚠️ Invalid administrator credentials. Access denied!');
-  }
-}
-window.handleAdminLogin = handleAdminLogin;
-
-
-
-/**
- * Exit Admin Control Panel cleanly and return to Player Profile view
- */
-function exitAdminToProfile() {
-  sessionStorage.removeItem('admin_authenticated');
-  localStorage.removeItem('admin_authenticated');
-  const adminStatusTag = document.getElementById('adminStatusTag');
-  if (adminStatusTag) adminStatusTag.textContent = '🔒';
-  switchProfileTab('profile');
-  showToast('👤 Returned to Player Profile view.');
-}
-window.exitAdminToProfile = exitAdminToProfile;
-
-/**
- * Sign out of Admin session and return cleanly to Profile tab
- */
-function adminLogout() {
-  sessionStorage.removeItem('admin_authenticated');
-  localStorage.removeItem('admin_authenticated');
-
-  const adminStatusTag = document.getElementById('adminStatusTag');
-  const errBox = document.getElementById('adminLoginError');
-  if (adminStatusTag) adminStatusTag.textContent = '🔒';
-  if (errBox) errBox.style.display = 'none';
-
-  switchProfileTab('profile');
-  showToast('Admin signed out safely 🔒 Returned to Profile.');
-}
-window.adminLogout = adminLogout;
-
-/**
- * Switch Admin subviews menu-bar-wise
- * @param {'tasks'|'users'|'withdraw'|'event'} viewKey
- */
-function switchAdminSubView(viewKey) {
-  currentAdminSubView = viewKey;
-
-  const views = {
-    tasks: document.getElementById('adminSubTasks'),
-    users: document.getElementById('adminSubUsers'),
-    withdraw: document.getElementById('adminSubWithdraw'),
-    event: document.getElementById('adminSubEvent')
-  };
-
-  const settingsPage = document.getElementById('adminSettingsPageView');
-  if (settingsPage) settingsPage.style.display = 'none';
-
-  const menuBtns = {
-    tasks: document.getElementById('adminMenuTasks'),
-    users: document.getElementById('adminMenuUsers'),
-    withdraw: document.getElementById('adminMenuWithdraw'),
-    event: document.getElementById('adminMenuEvent')
-  };
-
-  const titles = {
-    tasks: '🛡️ Admin Panel',
-    users: '👥 Registered Players',
-    withdraw: '💸 Reward Requests',
-    event: '🏆 Event Leaderboard'
-  };
-
-  // Update clean title
-  const titleEl = document.getElementById('adminActivePageTitle');
-  if (titleEl) titleEl.textContent = titles[viewKey] || '🛡️ Admin Panel';
-
-  // Toggle view visibility
-  Object.keys(views).forEach(key => {
-    if (views[key]) {
-      views[key].style.display = (key === viewKey) ? 'block' : 'none';
-    }
-  });
-
-  // Toggle active button style on admin menu bar
-  Object.keys(menuBtns).forEach(key => {
-    if (menuBtns[key]) {
-      if (key === viewKey) menuBtns[key].classList.add('active');
-      else menuBtns[key].classList.remove('active');
-    }
-  });
-
-  // Hide top header & bottom menu bar if viewing dedicated category or editor page
-  const pageView = document.getElementById('adminTaskCategoryPageView');
-  const allEditorView = document.getElementById('adminAllTasksEditorPageView');
-  const adminMenu = document.getElementById('adminMenuBar');
-  const adminTopHeaderBar = document.getElementById('adminTopHeaderBar');
-  const isSubPageOpen = viewKey === 'tasks' && (
-    (pageView && pageView.style.display !== 'none') ||
-    (allEditorView && allEditorView.style.display !== 'none')
-  );
-  if (isSubPageOpen) {
-    if (adminMenu) adminMenu.style.display = 'none';
-    if (adminTopHeaderBar) adminTopHeaderBar.style.display = 'none';
-  } else {
-    if (adminMenu) adminMenu.style.display = 'flex';
-    if (adminTopHeaderBar) adminTopHeaderBar.style.display = 'flex';
-  }
-
-  // Refresh withdrawals from localStorage when opening Requests subview
-  if (viewKey === 'withdraw') {
-    try {
-      const raw = localStorage.getItem(WITHDRAW_STORAGE_KEY);
-      let parsedWd = raw ? JSON.parse(raw) : [];
-      if (!Array.isArray(parsedWd)) parsedWd = [];
-      withdrawalsData = parsedWd.filter(w => w && !['WD-8491', 'WD-8490', 'WD-8489', 'WD-8488'].includes(w.id));
-    } catch (e) {}
-  }
-
-  renderCurrentAdminSubView();
+const HTML_ESC_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+function escapeHtml(str) {
+  if (typeof str !== 'string') return str ? String(str) : '';
+  return str.replace(/[&<>"']/g, ch => HTML_ESC_MAP[ch]);
 }
 
-/**
- * Render the currently selected admin subview
- */
-function renderCurrentAdminSubView() {
-  if (currentAdminSubView === 'tasks') renderAdminTasksList();
-  else if (currentAdminSubView === 'users') renderAdminUsersList();
-  else if (currentAdminSubView === 'withdraw') renderAdminWithdrawalsList();
-  else if (currentAdminSubView === 'event') renderAdminEventSection();
-}
+window.openRoadmapModal = function() {
+  window.location.href = '../leaderboard/index.html?action=roadmap';
+};
 
-/**
- * Load all stored data from localStorage
- */
-function loadAllAdminData() {
-  // 1. Tasks (Strictly real Admin/Firebase tasks — zero demo injection)
-  try {
-    const raw = localStorage.getItem(TASKS_STORAGE_KEY);
-    tasksData = raw ? JSON.parse(raw) : [];
-    if (!Array.isArray(tasksData)) tasksData = [];
-    const legacyDemoRe = /^(comm_mission|coin_mission|star_mission|pro_mission|ultra_mission|quiz_task)_/;
-    tasksData = tasksData.filter(t => t && t.id && !t.isDemo && !legacyDemoRe.test(String(t.id || '')) && !String(t.id || '').toLowerCase().includes('demo'));
-    tasksData.forEach(t => {
-      if (!t.verificationCode && !t.code && !t.secretCode) {
-        const gen = Math.floor(100000 + Math.random() * 900000).toString();
-        t.verificationCode = gen;
-        t.code = gen;
-        t.secretCode = gen;
-      }
-    });
-    localStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(tasksData));
-    localStorage.setItem('admin_tasks', JSON.stringify(tasksData));
-  } catch (e) {
-    tasksData = [];
-  }
+function updateAdminLiveDisplays() {
+  const currentCoins = parseInt(localStorage.getItem('task_game_coins') || '0', 10) || 0;
+  const currentStars = parseInt(localStorage.getItem('task_game_stars') || '0', 10) || 0;
+  const headerCoins = document.getElementById('profileCoinsDisplay');
+  if (headerCoins) headerCoins.textContent = currentCoins.toLocaleString();
+  const headerStars = document.getElementById('profileStarsDisplay');
+  if (headerStars) headerStars.textContent = currentStars.toLocaleString();
 
-  // 2. Users (Strictly real Firebase users; remove mock/demo users)
-  try {
-    const raw = localStorage.getItem(USERS_STORAGE_KEY);
-    let parsed = raw ? JSON.parse(raw) : [];
-    if (!Array.isArray(parsed)) parsed = [];
-    parsed = parsed.filter(u => u && typeof u === 'object' && !isDemoUser(u));
+  const ratingLevelEl = document.getElementById('tgProfileRatingLevel');
+  const ratingSubEl = document.getElementById('tgProfileRatingSub');
+  if (ratingLevelEl) ratingLevelEl.style.display = 'none';
+  if (ratingSubEl) ratingSubEl.style.display = 'none';
 
-    const uid = (window.Firebase && typeof window.Firebase.getEffectivePlayerUid === 'function')
-      ? window.Firebase.getEffectivePlayerUid()
-      : localStorage.getItem('player_uid');
-    if (uid) {
-      const pCoins = parseInt(localStorage.getItem('task_game_coins') || '0', 10) || 0;
-      const pStars = parseInt(localStorage.getItem('task_game_stars') || '0', 10) || 0;
-      const pName = localStorage.getItem('player_username') || 'Player';
-      const pAvatar = localStorage.getItem('player_avatar') || '⚡';
-      const pTotalTasks = parseInt(localStorage.getItem('completed_tasks_count') || localStorage.getItem(TOTAL_TASKS_KEY) || '0', 10) || 0;
-      const pEventTasks = parseInt(localStorage.getItem(EVENT_TASKS_KEY) || '0', 10) || 0;
-      let me = parsed.find(u => u.id === uid || u.uid === uid);
-      if (!me) {
-        parsed.unshift({
-          id: uid,
-          name: pName,
-          avatar: pAvatar,
-          level: 'LVL 1 • PLAYER',
-          coins: pCoins,
-          stars: pStars,
-          totalTasks: pTotalTasks,
-          eventTasks: pEventTasks,
-          status: 'active',
-          joined: 'Today'
-        });
-      } else {
-        if (pName && pName !== 'Player') me.name = pName;
-        me.coins = pCoins;
-        me.stars = pStars;
-        me.totalTasks = pTotalTasks;
-        me.eventTasks = pEventTasks;
-      }
-    }
-    usersData = parsed;
-    localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(usersData));
-  } catch (e) {
-    usersData = [];
-  }
-
-  // 3. Withdrawals (Real requests only)
-  try {
-    const raw = localStorage.getItem(WITHDRAW_STORAGE_KEY);
-    let parsedWd = raw ? JSON.parse(raw) : [];
-    if (!Array.isArray(parsedWd)) parsedWd = [];
-    withdrawalsData = parsedWd.filter(w => w && !['WD-8491', 'WD-8490', 'WD-8489', 'WD-8488'].includes(w.id));
-    localStorage.setItem(WITHDRAW_STORAGE_KEY, JSON.stringify(withdrawalsData));
-  } catch (e) {
-    withdrawalsData = [];
-  }
-
-  updateAdminCounters();
-  if (typeof loadAdminAppSettingsUI === 'function') loadAdminAppSettingsUI();
-}
-
-/**
- * Update badge counts on Admin Menu Bar
- */
-function updateAdminCounters() {
-  const taskCount = document.getElementById('adminMenuTaskCount');
-  if (taskCount) taskCount.textContent = tasksData.length.toString();
-
-  const userCount = document.getElementById('adminMenuUserCount');
-  if (userCount) userCount.textContent = usersData.length.toString();
-
-  const pendingWd = withdrawalsData.filter(w => w.status === 'pending');
-  const wdCount = document.getElementById('adminMenuPendingCount');
-  if (wdCount) {
-    wdCount.textContent = pendingWd.length.toString();
-    wdCount.style.display = pendingWd.length > 0 ? 'inline-block' : 'none';
-  }
-
-  // 6 Category Slices
-  const commonList = tasksData.filter(t => t.category === 'common');
-  const simpleList = tasksData.filter(t => (t.category === 'simple' || t.category === 'coin') && t.category !== 'common' && t.category !== 'pro' && t.category !== 'elite' && t.category !== 'ultra' && !t.isShopTask && t.category !== 'premium' && t.category !== 'star' && t.category !== 'quiz');
-  const premiumList = tasksData.filter(t => (t.category === 'premium' || t.category === 'star' || t.isShopTask || t.category === 'shop_task') && t.category !== 'common' && t.category !== 'pro' && t.category !== 'elite' && t.category !== 'ultra' && t.category !== 'quiz');
-  const proList = tasksData.filter(t => t.category === 'pro' || t.category === 'elite');
-  const ultraList = tasksData.filter(t => t.category === 'ultra');
-  const quizList = tasksData.filter(t => t.category === 'quiz');
-
-  // Hub Cards Available Counts (Exact real Firebase counts — 0 when empty)
-  const hubCommon = document.getElementById('adminHubCountCommon');
-  const hubSimple = document.getElementById('adminHubCountSimple');
-  const hubPremium = document.getElementById('adminHubCountPremium');
-  const hubPro = document.getElementById('adminHubCountPro');
-  const hubUltra = document.getElementById('adminHubCountUltra');
-  const hubQuiz = document.getElementById('adminHubCountQuiz');
-  if (hubCommon) hubCommon.textContent = commonList.length.toString();
-  if (hubSimple) hubSimple.textContent = simpleList.length.toString();
-  if (hubPremium) hubPremium.textContent = premiumList.length.toString();
-  if (hubPro) hubPro.textContent = proList.length.toString();
-  if (hubUltra) hubUltra.textContent = ultraList.length.toString();
-  if (hubQuiz) hubQuiz.textContent = quizList.length.toString();
-
-  // Legacy Counts
-  const cntAll = document.getElementById('countAdminFilterAll');
-  const cntSimple = document.getElementById('countAdminFilterSimple');
-  const cntPremium = document.getElementById('countAdminFilterPremium');
-  const cntPro = document.getElementById('countAdminFilterPro');
-  if (cntAll) cntAll.textContent = tasksData.length.toString();
-  if (cntSimple) cntSimple.textContent = simpleList.length.toString();
-  if (cntPremium) cntPremium.textContent = premiumList.length.toString();
-  if (cntPro) cntPro.textContent = proList.length.toString();
-
-  // Active Category List for Header Count & Level Breakdown
-  let currentList = commonList;
-  if (currentAdminCategoryTab === 'simple') currentList = simpleList;
-  else if (currentAdminCategoryTab === 'premium') currentList = premiumList;
-  else if (currentAdminCategoryTab === 'pro') currentList = proList;
-  else if (currentAdminCategoryTab === 'ultra') currentList = ultraList;
-  else if (currentAdminCategoryTab === 'quiz') currentList = quizList;
-
-  // Category Header Count Pill
-  const catHeaderCount = document.getElementById('adminCatPageHeaderCount');
-  if (catHeaderCount) {
-    catHeaderCount.textContent = `${currentList.length} Tasks`;
-  }
-
-  // Level-Wise Breakdown Counts
-  const cntLvlAll = document.getElementById('countLvlAll');
-  const cntLvl1 = document.getElementById('countLvl1');
-  const cntLvl2 = document.getElementById('countLvl2');
-  const cntLvl3 = document.getElementById('countLvl3');
-  const cntLvl4 = document.getElementById('countLvl4');
-  const cntLvl5 = document.getElementById('countLvl5');
-  if (cntLvlAll) cntLvlAll.textContent = currentList.length.toString();
-  if (cntLvl1) cntLvl1.textContent = currentList.filter(t => Number(t.level || 1) === 1).length.toString();
-  if (cntLvl2) cntLvl2.textContent = currentList.filter(t => Number(t.level || 1) === 2).length.toString();
-  if (cntLvl3) cntLvl3.textContent = currentList.filter(t => Number(t.level || 1) === 3).length.toString();
-  if (cntLvl4) cntLvl4.textContent = currentList.filter(t => Number(t.level || 1) === 4).length.toString();
-  if (cntLvl5) cntLvl5.textContent = currentList.filter(t => Number(t.level || 1) === 5).length.toString();
-}
-
-// -----------------------------------------------------------------------------
-// 1. ADMIN TASK CATEGORY CONTROLLER (COMMON, COIN, STAR, PRO, ULTRA)
-// -----------------------------------------------------------------------------
-
-let currentAdminTaskCategoryFilter = 'common';
-let currentAdminCategoryTab = 'common';
-let currentAdminLevelFilter = 'all';
-let isCategoryQuickEditActive = false;
-
-/**
- * Open Dedicated Category Full Page View
- * Removes main heading and shows full-page category manager
- * @param {'common'|'simple'|'premium'|'pro'|'ultra'|'coin'|'star'} cat
- */
-function openAdminTaskCategoryPage(cat) {
-  if (cat === 'coin') cat = 'simple';
-  if (cat === 'star') cat = 'premium';
-  if (!cat || cat === 'all') cat = 'common';
-
-  currentAdminCategoryTab = cat;
-  currentAdminTaskCategoryFilter = cat;
-  currentAdminLevelFilter = 'all';
-
-  // 1. Remove/Hide top heading and global toolbar
-  const mainHeader = document.getElementById('adminDashHeader');
-  const topHeaderBar = document.getElementById('adminTopHeaderBar');
-  const globalToolbar = document.getElementById('adminGlobalToolbar');
-  if (mainHeader) mainHeader.style.display = 'none';
-  if (topHeaderBar) topHeaderBar.style.display = 'none';
-  if (globalToolbar) globalToolbar.style.display = 'none';
-
-  // 2. Hide Hub & Editor, Show Full Category Page View
-  const hub = document.getElementById('adminTaskCategoryHub');
-  const pageView = document.getElementById('adminTaskCategoryPageView');
-  const allEditorView = document.getElementById('adminAllTasksEditorPageView');
-  if (hub) hub.style.display = 'none';
-  if (allEditorView) allEditorView.style.display = 'none';
-  if (pageView) pageView.style.display = 'block';
-
-  // 3. Hide bottom navigation menu bar (adminMenuBar & belowMenuBar) inside category full page view
-  const adminMenu = document.getElementById('adminMenuBar');
-  const belowMenu = document.getElementById('belowMenuBar');
-  if (adminMenu) adminMenu.style.display = 'none';
-  if (belowMenu) belowMenu.style.display = 'none';
-
-  // 4. Update Category Top Bar Info
-  const iconEl = document.getElementById('adminCatPageHeaderIcon');
-  const titleEl = document.getElementById('adminCatPageHeaderTitle');
-
-  const metaMap = {
-    common: { icon: '📋', name: 'Common Tasks', color: '#38bdf8', border: 'rgba(56, 189, 248, 0.5)' },
-    simple: { icon: '🪙', name: 'Coin Tasks', color: '#60a5fa', border: 'rgba(37, 99, 235, 0.55)' },
-    premium: { icon: '⭐', name: 'Star Tasks (VIP)', color: '#c084fc', border: 'rgba(168, 85, 247, 0.55)' },
-    pro: { icon: '💎', name: 'Pro Tasks', color: '#34d399', border: 'rgba(52, 211, 153, 0.5)' },
-    ultra: { icon: '⚡', name: 'Ultra Tasks', color: '#facc15', border: 'rgba(250, 204, 21, 0.55)' },
-    quiz: { icon: '🧠', name: 'Quiz Tasks', color: '#10b981', border: 'rgba(16, 185, 129, 0.55)' }
-  };
-
-  const meta = metaMap[cat] || metaMap.common;
-  if (iconEl) iconEl.textContent = meta.icon;
-  if (titleEl) {
-    titleEl.textContent = meta.name;
-    titleEl.style.color = meta.color;
-  }
-  const topBar = document.getElementById('adminCatPageTopBar');
-  if (topBar) topBar.style.borderColor = meta.border;
-
-  // Hide level breakdown dropdown button on categories without level selection (Common, Pro, Ultra, Quiz)
-  const lvlBtn = document.getElementById('btnToggleLevelBreakdown');
-  if (lvlBtn) {
-    lvlBtn.style.display = ['common', 'pro', 'ultra', 'quiz'].includes(cat) ? 'none' : '';
-  }
-
-  // Close breakdown popover and slide-up modal if open
-  toggleLevelBreakdown(false);
-  closeCategoryTaskPopup();
-
-  // Render list
-  renderAdminTasksList();
-}
-window.openAdminTaskCategoryPage = openAdminTaskCategoryPage;
-
-/**
- * Close Dedicated Category Page View and return to Hub (Restores main heading and bottom admin menu bar)
- */
-function closeAdminTaskCategoryPage() {
-  const mainHeader = document.getElementById('adminDashHeader');
-  const topHeaderBar = document.getElementById('adminTopHeaderBar');
-  const globalToolbar = document.getElementById('adminGlobalToolbar');
-  if (mainHeader) mainHeader.style.display = 'none';
-  if (topHeaderBar) topHeaderBar.style.display = 'flex';
-  if (globalToolbar) globalToolbar.style.display = 'none';
-
-  const hub = document.getElementById('adminTaskCategoryHub');
-  const pageView = document.getElementById('adminTaskCategoryPageView');
-  const allEditorView = document.getElementById('adminAllTasksEditorPageView');
-  if (pageView) pageView.style.display = 'none';
-  if (allEditorView) allEditorView.style.display = 'none';
-  if (hub) hub.style.display = 'flex';
-
-  // Restore admin bottom menu bar when returning to Hub
-  const adminMenu = document.getElementById('adminMenuBar');
-  if (adminMenu) adminMenu.style.display = 'flex';
-
-  toggleLevelBreakdown(false);
-  closeCategoryTaskPopup();
-  updateAdminCounters();
-}
-window.closeAdminTaskCategoryPage = closeAdminTaskCategoryPage;
-
-// -----------------------------------------------------------------------------
-// 1B. DEDICATED SETTINGS PAGES (Circular ⚙️ Button -> Settings Tabs -> Detail Page)
-// -----------------------------------------------------------------------------
-function openAdminSettingsPage() {
-  if (typeof loadAdminAppSettingsUI === 'function') loadAdminAppSettingsUI();
-  ['adminSubTasks', 'adminSubUsers', 'adminSubWithdraw', 'adminSubEvent'].forEach((id) => {
-    const el = document.getElementById(id);
-    if (el) el.style.display = 'none';
-  });
-  const topHeaderBar = document.getElementById('adminTopHeaderBar');
-  const adminMenu = document.getElementById('adminMenuBar');
-  if (topHeaderBar) topHeaderBar.style.display = 'none';
-  if (adminMenu) adminMenu.style.display = 'none';
-
-  const settingsPage = document.getElementById('adminSettingsPageView');
-  const tabsHub = document.getElementById('adminSettingsTabsHub');
-  const detailView = document.getElementById('adminSettingsDetailPageView');
-  if (settingsPage) settingsPage.style.display = 'block';
-  if (tabsHub) tabsHub.style.display = 'block';
-  if (detailView) detailView.style.display = 'none';
-}
-
-function openAdminSettingsDetailPage(sectionKey = 'all') {
-  if (typeof loadAdminAppSettingsUI === 'function') loadAdminAppSettingsUI();
-  const tabsHub = document.getElementById('adminSettingsTabsHub');
-  const detailView = document.getElementById('adminSettingsDetailPageView');
-  const titleEl = document.getElementById('adminSettingsDetailTitle');
-  if (tabsHub) tabsHub.style.display = 'none';
-  if (detailView) detailView.style.display = 'block';
-
-  const titleMap = {
-    all: 'Limits, VIP Star Plan & Pro Group Defaults',
-    limits: 'Daily Category Limits',
-    vip: 'VIP Star Pass Plans (500 / 1,000 / 5,000 ⭐)',
-    pro: 'Pro Group & Progression Defaults',
-    wallet: 'Wallet Offers & Ultra Milestones'
-  };
-  if (titleEl) titleEl.textContent = titleMap[sectionKey] || titleMap.all;
-
-  document.querySelectorAll('#adminSettingsDetailPageView .admin-settings-sec').forEach((sec) => {
-    const k = sec.getAttribute('data-sec') || '';
-    sec.style.display = (sectionKey === 'all' || k === sectionKey) ? 'block' : 'none';
-  });
-}
-
-function backToAdminSettingsHub() {
-  const tabsHub = document.getElementById('adminSettingsTabsHub');
-  const detailView = document.getElementById('adminSettingsDetailPageView');
-  if (detailView) detailView.style.display = 'none';
-  if (tabsHub) tabsHub.style.display = 'block';
-}
-
-function closeAdminSettingsPage() {
-  const settingsPage = document.getElementById('adminSettingsPageView');
-  const tabsHub = document.getElementById('adminSettingsTabsHub');
-  const detailView = document.getElementById('adminSettingsDetailPageView');
-  if (settingsPage) settingsPage.style.display = 'none';
-  if (tabsHub) tabsHub.style.display = 'block';
-  if (detailView) detailView.style.display = 'none';
-  switchAdminSubView(currentAdminSubView || 'tasks');
-}
-
-window.openAdminSettingsPage = openAdminSettingsPage;
-window.openAdminSettingsDetailPage = openAdminSettingsDetailPage;
-window.backToAdminSettingsHub = backToAdminSettingsHub;
-window.closeAdminSettingsPage = closeAdminSettingsPage;
-
-function filterAdminTasksCategory(cat) {
-  openAdminTaskCategoryPage(cat);
-}
-window.filterAdminTasksCategory = filterAdminTasksCategory;
-
-// -----------------------------------------------------------------------------
-// 2. LEVEL-WISE TASK COUNT DROPDOWN & FILTER
-// -----------------------------------------------------------------------------
-
-function toggleLevelBreakdown(forceState) {
-  const card = document.getElementById('adminLevelBreakdownCard');
-  const btn = document.getElementById('btnToggleLevelBreakdown');
-  if (!card) return;
-
-  const isVisible = (card.style.display === 'block');
-  const nextState = (typeof forceState === 'boolean') ? forceState : !isVisible;
-
-  card.style.display = nextState ? 'block' : 'none';
-  if (btn) {
-    if (nextState) btn.classList.add('active');
-    else btn.classList.remove('active');
-  }
-}
-window.toggleLevelBreakdown = toggleLevelBreakdown;
-
-function filterByLevel(lvl) {
-  currentAdminLevelFilter = (lvl === 'all') ? 'all' : parseInt(lvl, 10);
-
-  // Update active class in dropdown items
-  ['filterLvlAll', 'filterLvl1', 'filterLvl2', 'filterLvl3', 'filterLvl4', 'filterLvl5'].forEach(id => {
-    document.getElementById(id)?.classList.remove('active');
-  });
-
-  if (currentAdminLevelFilter === 'all') {
-    document.getElementById('filterLvlAll')?.classList.add('active');
-  } else {
-    document.getElementById(`filterLvl${currentAdminLevelFilter}`)?.classList.add('active');
-  }
-
-  toggleLevelBreakdown(false);
-  renderAdminTasksList();
-}
-window.filterByLevel = filterByLevel;
-
-// -----------------------------------------------------------------------------
-// 3. ACTION MENU HANDLERS (ADD, QUICK EDIT, RESTART, DELETE ALL)
-// -----------------------------------------------------------------------------
-
-function toggleCategoryQuickEditMode() {
-  isCategoryQuickEditActive = !isCategoryQuickEditActive;
-  const btn = document.getElementById('btnCategoryQuickEdit');
-  if (btn) {
-    if (isCategoryQuickEditActive) {
-      btn.classList.add('active');
-      btn.innerHTML = '<span>✕ Done Editing</span>';
-      showToast('✏️ Edit mode active: click "✏️ Edit" on any task below to modify it.');
+  const avatarRaw = localStorage.getItem('player_avatar') || 'avatar-1.png';
+  const applyAvatarToEl = (el, size) => {
+    if (!el) return;
+    if (typeof window.renderPlayerAvatarEl === 'function') {
+      window.renderPlayerAvatarEl(el, avatarRaw, size || 36);
     } else {
-      btn.classList.remove('active');
-      btn.innerHTML = '<span>✏️ Edit Tasks</span>';
+      const m = String(avatarRaw).match(/avatar-([1-8])\.png/i);
+      const map = { '⚡':'avatar-1.png','👤':'avatar-7.png','👑':'avatar-2.png','💎':'avatar-6.png','🚀':'avatar-7.png','🦊':'avatar-3.png','🦁':'avatar-4.png','🎯':'avatar-8.png','🤖':'avatar-5.png','💻':'avatar-5.png','🐯':'avatar-8.png' };
+      const file = m ? `avatar-${m[1]}.png` : (map[avatarRaw] || 'avatar-1.png');
+      el.style.background = 'transparent';
+      el.style.border = 'none';
+      el.style.boxShadow = 'none';
+      el.style.borderRadius = '0';
+      el.innerHTML = `<img src="../../assets/avatars/${file}" alt="Avatar" class="sticker-3d-avatar-img" style="width:${size || 36}px;height:${size || 36}px;object-fit:contain;display:block;" />`;
     }
-  }
-  renderAdminTasksList();
-}
-window.toggleCategoryQuickEditMode = toggleCategoryQuickEditMode;
-
-function restartCategoryTasks() {
-  const catNames = {
-    common: 'Common Tasks',
-    simple: 'Coin Tasks',
-    premium: 'Star Tasks',
-    pro: 'Pro Tasks',
-    ultra: 'Ultra Tasks',
-    quiz: 'Quiz Tasks'
   };
-  const name = catNames[currentAdminCategoryTab] || 'Category Tasks';
+  const userAvatar = document.querySelector('.user-avatar');
+  applyAvatarToEl(userAvatar, 36);
+  const headerUserAvatar = document.getElementById('headerUserAvatar');
+  applyAvatarToEl(headerUserAvatar, 36);
 
-  if (!confirm(`🔄 Restart all missions in ${name}?\n\nThis will reset completion records and cooldowns for this category so all players can play and complete them again!`)) {
+  const currentProfileUsername = localStorage.getItem('player_username') || localStorage.getItem('user_profile_name') || 'Player';
+  const userName = document.querySelector('.user-name');
+  if (userName) userName.textContent = currentProfileUsername;
+  const headerUserName = document.getElementById('headerUserName');
+  if (headerUserName) headerUserName.textContent = currentProfileUsername;
+
+  // Hide Day 1 Streak Pill for admin user 400@kp / authenticated admin session
+  const isAdminUser =
+    sessionStorage.getItem('admin_authenticated') === 'true' ||
+    localStorage.getItem('is_admin_user_400kp') === 'true' ||
+    currentProfileUsername === '400@kp';
+  const streakPill = document.getElementById('streakPill');
+  if (streakPill) streakPill.style.display = isAdminUser ? 'none' : '';
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const urlParams = new URLSearchParams(window.location.search);
+  const targetTab = (urlParams.get('tab') || urlParams.get('open') || '').toLowerCase();
+  if (targetTab === 'admin') {
+    window.location.replace('../../../admin/index.html');
     return;
   }
-
-  // Clear claims & cooldowns for tasks in this category
-  try {
-    const claimsRaw = localStorage.getItem(CLAIMS_STORAGE_KEY);
-    let claims = claimsRaw ? JSON.parse(claimsRaw) : {};
-    tasksData.forEach(t => {
-      if (t.category === currentAdminCategoryTab) {
-        delete claims[t.id];
-        localStorage.removeItem(`task_opened_${t.id}`);
-        localStorage.removeItem(`task_claimed_${t.id}`);
-      }
-    });
-    localStorage.setItem(CLAIMS_STORAGE_KEY, JSON.stringify(claims));
-    localStorage.setItem(SYNC_FLAG_KEY, Date.now().toString());
-    if (syncChannel) {
-      syncChannel.postMessage({ type: 'CLAIMS_UPDATED', timestamp: Date.now() });
-    }
-  } catch(e) {}
-
-  showToast(`🔄 All ${name} restarted! Cooldowns cleared for all players. ✓`);
-}
-window.restartCategoryTasks = restartCategoryTasks;
-
-function deleteAllCategoryTasks() {
-  const catNames = {
-    common: 'Common Tasks',
-    simple: 'Coin Tasks',
-    premium: 'Star Tasks',
-    pro: 'Pro Tasks',
-    ultra: 'Ultra Tasks',
-    quiz: 'Quiz Tasks'
-  };
-  const name = catNames[currentAdminCategoryTab] || 'Category Tasks';
-
-  if (!confirm(`⚠️ Are you sure you want to DELETE ALL tasks in ${name}?\n\nThis will permanently remove all tasks in this category.`)) {
-    return;
-  }
-
-  tasksData = tasksData.filter(t => {
-    const cat = String(t && t.category || '').toLowerCase();
-    if (currentAdminCategoryTab === 'common') return cat !== 'common';
-    if (currentAdminCategoryTab === 'simple') return (cat !== 'simple' && cat !== 'coin') || t.isShopTask;
-    if (currentAdminCategoryTab === 'premium') return (cat !== 'premium' && cat !== 'star' && !t.isShopTask && cat !== 'shop_task');
-    if (currentAdminCategoryTab === 'pro') return (cat !== 'pro' && cat !== 'elite');
-    if (currentAdminCategoryTab === 'ultra') return cat !== 'ultra';
-    if (currentAdminCategoryTab === 'quiz') return cat !== 'quiz';
-    return true;
-  });
-
-  saveTasksAndSync();
-  showToast(`🗑️ All tasks in ${name} have been removed.`);
-}
-window.deleteAllCategoryTasks = deleteAllCategoryTasks;
-
-// -----------------------------------------------------------------------------
-// 4. SLIDE-UP POPUP MODAL CONTROLLER (ADD NEW MISSION & EDIT INDIVIDUAL MISSION)
-// -----------------------------------------------------------------------------
-
-/**
- * Open Slide-up modal to ADD a new mission in the active category
- */
-let _slideUpCloseTimer = null;
-
-function openAddCategoryTaskPopup() {
-  if (_slideUpCloseTimer) { clearTimeout(_slideUpCloseTimer); _slideUpCloseTimer = null; }
-  const overlay = document.getElementById('adminCategoryTaskModalOverlay');
-  if (!overlay) return;
-
-  const cat = currentAdminCategoryTab || 'common';
-  const heading = document.getElementById('slideUpModalHeading');
-  const icon = document.getElementById('slideUpModalIcon');
-
-  const metaAdd = {
-    common: { icon: '📋', name: 'Add Common Task' },
-    simple: { icon: '🪙', name: 'Add Coin Task' },
-    premium: { icon: '⭐', name: 'Add Star Task' },
-    pro: { icon: '💎', name: 'Add Pro 3-Task Package' },
-    ultra: { icon: '⚡', name: 'Add Ultra Task' },
-    quiz: { icon: '🧠', name: 'Add Quiz Task' }
-  };
-
-  if (heading) heading.textContent = metaAdd[cat]?.name || 'Add Task';
-  if (icon) icon.textContent = metaAdd[cat]?.icon || '📋';
-
-  // Hide edit selector row when adding a new task
-  const selectorRow = document.getElementById('slideUpEditTaskSelectorRow');
-  if (selectorRow) selectorRow.style.display = 'none';
-
-  // Unlock cost price in add mode
-  const costInputs = ['popupCoinTicketCost', 'popupProPackageCoinCost', 'popupUltraStarCost', 'taskInputTicketCost'];
-  costInputs.forEach(id => {
-    const el = document.getElementById(id);
-    if (el) {
-      el.readOnly = false;
-      el.style.opacity = '1';
-      el.style.cursor = 'text';
-      el.title = '';
-    }
-  });
-
-  // Display only matching form inside slide-up modal
-  ['popupFormCommon', 'popupFormCoin', 'popupFormStar', 'popupFormPro', 'popupFormUltra', 'popupFormQuiz'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.style.display = 'none';
-  });
-
-  const formMap = {
-    common: 'popupFormCommon',
-    simple: 'popupFormCoin',
-    premium: 'popupFormStar',
-    pro: 'popupFormPro',
-    ultra: 'popupFormUltra',
-    quiz: 'popupFormQuiz'
-  };
-
-  const activeForm = document.getElementById(formMap[cat]);
-  if (activeForm) activeForm.style.display = 'block';
-
-  // Reset Form to Clean Default Values for Adding
-  const formatLocalDtInput = (ms) => {
-    const d = new Date(ms);
-    const pad = (n) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  };
-
-  if (cat === 'common') {
-    const f = document.getElementById('popupFormCommon');
-    if (f) {
-      f.reset();
-      document.getElementById('popupCommonEditId').value = '';
-      document.getElementById('popupCommonTitle').value = 'Webtask';
-      document.getElementById('popupCommonRewardTickets').value = '50';
-      document.getElementById('popupCommonCode').value = Math.floor(100000 + Math.random() * 900000).toString();
-      document.getElementById('btnSavePopupCommon').textContent = 'Save Common Task ✓';
-      switchPopupCommonMode('single');
-    }
-  } else if (cat === 'simple') {
-    const f = document.getElementById('popupFormCoin');
-    if (f) {
-      f.reset();
-      document.getElementById('popupCoinEditId').value = '';
-      document.getElementById('popupCoinTitle').value = 'Webtask';
-      if (document.getElementById('popupCoinUnlockCurrency')) document.getElementById('popupCoinUnlockCurrency').value = 'tickets';
-      document.getElementById('popupCoinTicketCost').value = '100';
-      document.getElementById('popupCoinRewardCoins').value = '150';
-      if (document.getElementById('popupCoinLevel')) document.getElementById('popupCoinLevel').value = '1';
-      document.getElementById('popupCoinCode').value = Math.floor(100000 + Math.random() * 900000).toString();
-      document.getElementById('btnSavePopupCoin').textContent = 'Save Coin Task ✓';
-    }
-  } else if (cat === 'premium') {
-    const f = document.getElementById('popupFormStar');
-    if (f) {
-      f.reset();
-      document.getElementById('popupStarEditId').value = '';
-      document.getElementById('popupStarTitle').value = 'Webtask';
-      document.getElementById('popupStarRewardStars').value = '20';
-      document.getElementById('popupStarRewardCoins').value = '200';
-      document.getElementById('popupStarLevel').value = '1';
-      document.getElementById('popupStarCode').value = Math.floor(100000 + Math.random() * 900000).toString();
-      document.getElementById('btnSavePopupStar').textContent = 'Save Star Task ✓';
-    }
-  } else if (cat === 'pro') {
-    const f = document.getElementById('popupFormPro');
-    if (f) {
-      f.reset();
-      document.getElementById('popupProEditId').value = '';
-      if (document.getElementById('popupProCostCurrency')) document.getElementById('popupProCostCurrency').value = 'coins';
-      document.getElementById('popupProPackageCoinCost').value = '5000';
-      document.getElementById('popupProRewardStars').value = '1000';
-      document.getElementById('popupProTask1Title').value = 'Webtask 1';
-      document.getElementById('popupProTask2Title').value = 'Webtask 2';
-      document.getElementById('popupProTask3Title').value = 'Webtask 3';
-      document.getElementById('popupProTask1Code').value = Math.floor(100000 + Math.random() * 900000).toString();
-      document.getElementById('popupProTask2Code').value = Math.floor(100000 + Math.random() * 900000).toString();
-      document.getElementById('popupProTask3Code').value = Math.floor(100000 + Math.random() * 900000).toString();
-      setProEventDurationHours(24);
-      document.getElementById('btnSavePopupPro').textContent = 'Save Pro Package ✓';
-    }
-  } else if (cat === 'ultra') {
-    const f = document.getElementById('popupFormUltra');
-    if (f) {
-      f.reset();
-      document.getElementById('popupUltraEditId').value = '';
-      document.getElementById('popupUltraTitle').value = 'Webtask';
-      if (document.getElementById('popupUltraCostCurrency')) document.getElementById('popupUltraCostCurrency').value = 'stars';
-      document.getElementById('popupUltraStarCost').value = '50';
-      document.getElementById('popupUltraInrReward').value = '1500';
-      handleUltraPriceCalc('stars');
-      document.getElementById('popupUltraCode').value = Math.floor(100000 + Math.random() * 900000).toString();
-      document.getElementById('btnSavePopupUltra').textContent = 'Save Ultra Task ✓';
-    }
-  } else if (cat === 'quiz') {
-    const f = document.getElementById('popupFormQuiz');
-    if (f) {
-      f.reset();
-      document.getElementById('popupQuizEditId').value = '';
-      document.getElementById('popupQuizTitle').value = 'Quiz Mission';
-      document.getElementById('popupQuizUrl').value = 'https://google.com/';
-      document.getElementById('popupQuizCode').value = Math.floor(100000 + Math.random() * 900000).toString();
-      const startEl = document.getElementById('popupQuizStartTime');
-      if (startEl) startEl.value = formatLocalDtInput(Date.now());
-      document.getElementById('popupQuizRewardCoins').value = '100';
-      if (document.getElementById('popupQuizUnlockCurrency')) document.getElementById('popupQuizUnlockCurrency').value = 'coins';
-      if (document.getElementById('popupQuizUnlockCost')) document.getElementById('popupQuizUnlockCost').value = '0';
-      if (document.getElementById('popupQuizTimer')) document.getElementById('popupQuizTimer').value = '300';
-      document.getElementById('btnSavePopupQuiz').textContent = 'Save Quiz Task ✓';
-    }
-  }
-
-  const card = overlay.querySelector('.admin-slideup-modal-card');
-  if (card) card.classList.remove('closing');
-  overlay.classList.add('open');
-  overlay.style.display = 'flex';
-}
-window.openAddCategoryTaskPopup = openAddCategoryTaskPopup;
-
-/**
- * Open Slide-up modal to EDIT an individual task in the active category
- * @param {string} taskId
- */
-function openEditCategoryTaskPopup(taskId) {
-  const overlay = document.getElementById('adminCategoryTaskModalOverlay');
-  if (!overlay) return;
-
-  const task = tasksData.find(t => t.id === taskId);
-  if (!task) return;
-
-  let cat = task.category || currentAdminCategoryTab || 'common';
-  if (cat === 'coin') cat = 'simple';
-  if (cat === 'star') cat = 'premium';
-  currentAdminCategoryTab = cat;
-
-  const heading = document.getElementById('slideUpModalHeading');
-  const icon = document.getElementById('slideUpModalIcon');
-
-  const metaEdit = {
-    common: { icon: '📋', name: `Edit Common Task: ${task.title || 'Webtask'}` },
-    simple: { icon: '🪙', name: `Edit Coin Task: ${task.title || 'Webtask'}` },
-    premium: { icon: '⭐', name: `Edit Star Task: ${task.title || 'Webtask'}` },
-    pro: { icon: '💎', name: `Edit Pro Package: ${task.title || 'Webtask'}` },
-    ultra: { icon: '⚡', name: `Edit Ultra Task: ${task.title || 'Webtask'}` },
-    quiz: { icon: '🧠', name: `Edit Quiz Task: ${task.title || 'Trivia'}` }
-  };
-
-  if (heading) heading.textContent = metaEdit[cat]?.name || `Edit: ${task.title || 'Task'}`;
-  if (icon) icon.textContent = metaEdit[cat]?.icon || '✏️';
-
-  // Display only matching form inside slide-up modal
-  ['popupFormCommon', 'popupFormCoin', 'popupFormStar', 'popupFormPro', 'popupFormUltra', 'popupFormQuiz'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.style.display = 'none';
-  });
-
-  const formMap = {
-    common: 'popupFormCommon',
-    simple: 'popupFormCoin',
-    premium: 'popupFormStar',
-    pro: 'popupFormPro',
-    ultra: 'popupFormUltra',
-    quiz: 'popupFormQuiz'
-  };
-
-  const activeForm = document.getElementById(formMap[cat]);
-  if (activeForm) activeForm.style.display = 'block';
-
-  // Populate task selector dropdown for easy switching between tasks in this category
-  const selectorRow = document.getElementById('slideUpEditTaskSelectorRow');
-  const selectorDropdown = document.getElementById('slideUpTaskSelectDropdown');
-  if (selectorRow && selectorDropdown) {
-    const catTasks = tasksData.filter(t => {
-      if (cat === 'common') return t.category === 'common' || t.category === 'task';
-      if (cat === 'simple') return t.category === 'simple' || t.category === 'coin';
-      if (cat === 'premium') return t.category === 'premium' || t.category === 'star';
-      if (cat === 'pro') return t.category === 'pro';
-      if (cat === 'ultra') return t.category === 'ultra' || t.category === 'mega';
-      if (cat === 'quiz') return t.category === 'quiz';
-      return false;
-    });
-
-    if (catTasks.length > 1) {
-      selectorRow.style.display = 'block';
-      selectorDropdown.innerHTML = catTasks.map(t => 
-        `<option value="${t.id}" ${t.id === taskId ? 'selected' : ''}>${t.title || 'Webtask'} (Level ${t.level || 1})</option>`
-      ).join('');
-    } else {
-      selectorRow.style.display = 'none';
-    }
-  }
-
-  // Load task data into the active category form
-  loadTaskIntoSlideUpForm(taskId);
-
-  if (_slideUpCloseTimer) { clearTimeout(_slideUpCloseTimer); _slideUpCloseTimer = null; }
-  const card = overlay.querySelector('.admin-slideup-modal-card');
-  if (card) card.classList.remove('closing');
-  overlay.classList.add('open');
-  overlay.style.display = 'flex';
-}
-window.openEditCategoryTaskPopup = openEditCategoryTaskPopup;
-
-/**
- * Open Full-Page Multi-Task Editor showing ALL tasks in the current category (Common Tasks, etc.)
- */
-function filterTasksForAdminCat(cat) {
-  return tasksData.filter(t => {
-    if (!t) return false;
-    if (cat === 'common') return t.category === 'common' || t.category === 'task';
-    if (cat === 'simple') return t.category === 'simple' || t.category === 'coin';
-    if (cat === 'premium') return t.category === 'premium' || t.category === 'star';
-    if (cat === 'pro') return t.category === 'pro' || t.category === 'elite';
-    if (cat === 'ultra') return t.category === 'ultra' || t.category === 'mega';
-    if (cat === 'quiz') return t.category === 'quiz';
-    return false;
-  });
-}
-
-function openAdminAllTasksEditorPage(catArg) {
-  const cat = catArg || currentAdminCategoryTab || 'common';
-  currentAdminCategoryTab = cat;
-  const pageView = document.getElementById('adminTaskCategoryPageView');
-  const editorView = document.getElementById('adminAllTasksEditorPageView');
-  const topHeader = document.getElementById('adminTopHeaderBar');
-  const adminMenu = document.getElementById('adminMenuBar');
-  const listEl = document.getElementById('adminAllTasksEditorList');
-  const titleEl = document.getElementById('allTasksEditorHeaderTitle');
-
-  if (pageView) pageView.style.display = 'none';
-  if (topHeader) topHeader.style.display = 'none';
-  if (adminMenu) adminMenu.style.display = 'none';
-  if (editorView) editorView.style.display = 'block';
-
-  const catNames = {
-    common: 'Common Task Editor (All Tasks)',
-    simple: 'Coin Task Editor (All Tasks)',
-    premium: 'Star Task Editor (All Tasks)',
-    pro: 'Pro Task Editor (All Tasks)',
-    ultra: 'Ultra Task Editor (All Tasks)',
-    quiz: 'Quiz Task Editor (All Tasks)'
-  };
-  if (titleEl) titleEl.textContent = catNames[cat] || 'All Tasks Editor';
-
-  const catTasks = filterTasksForAdminCat(cat);
-  if (!listEl) return;
-
-  if (catTasks.length === 0) {
-    listEl.innerHTML = `
-      <div style="text-align:center;padding:2rem 1rem;background:#0a1738;border-radius:14px;border:1px dashed rgba(56,189,248,0.3);color:#94a3b8;">
-        No tasks found in this category yet. Click Back and use "＋ Add Task" first.
-      </div>`;
-    return;
-  }
-
-  const rewardLabel = cat === 'common' ? 'Tickets 🎟️'
-    : (cat === 'simple' || cat === 'quiz') ? 'Coins 🪙'
-    : (cat === 'ultra') ? 'INR ₹'
-    : 'Stars ⭐';
-  const showCostRow = ['simple', 'pro', 'ultra', 'quiz'].includes(cat);
-
-  listEl.innerHTML = catTasks.map((t, idx) => {
-    const rewardVal = cat === 'common' ? (t.rewardTickets ?? 50)
-      : (cat === 'simple' || cat === 'quiz') ? (t.rewardCoins ?? 150)
-      : (cat === 'ultra') ? (t.inrReward ?? 1500)
-      : (t.rewardStars ?? 20);
-    const codeVal = String(t.verificationCode || t.code || t.secretCode || '').trim() || '123456';
-    const costVal = Number(t.unlockCost !== undefined ? t.unlockCost : (t.groupCostAmount !== undefined ? t.groupCostAmount : (t.ticketCost !== undefined ? t.ticketCost : (t.starCost || 0))));
-    const costCurr = t.unlockCurrency || t.groupCostCurrency || (cat === 'simple' ? 'tickets' : cat === 'pro' ? 'coins' : cat === 'ultra' ? 'stars' : 'coins');
-
-    return `
-      <div class="admin-task-editor-row" data-editor-task-id="${escapeHtml(t.id)}" style="background:#0a1738;border:1.5px solid rgba(56,189,248,0.28);border-radius:14px;padding:0.75rem;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.45rem;gap:6px;">
-          <span style="font-size:0.74rem;font-weight:900;color:#38bdf8;">#${idx + 1} • ID: ${escapeHtml(t.id)}</span>
-          <div style="display:flex;align-items:center;gap:8px;">
-            <label style="font-size:0.72rem;font-weight:800;color:#cbd5e1;display:flex;align-items:center;gap:4px;">
-              <input type="checkbox" data-ed-field="active" ${t.active !== false ? 'checked' : ''}> Active 🟢
-            </label>
-            <button type="button" onclick="deleteTaskFromEditor('${escapeHtml(t.id)}')" style="padding:3px 7px;border-radius:6px;border:1px solid rgba(239,68,68,0.45);background:rgba(239,68,68,0.16);color:#f87171;font-size:0.68rem;font-weight:800;cursor:pointer;">Delete</button>
-          </div>
-        </div>
-        <div style="margin-bottom:0.4rem;">
-          <label style="font-size:0.64rem;color:#94a3b8;">Task Title *</label>
-          <input type="text" data-ed-field="title" class="admin-form-input font-bold" value="${escapeHtml(t.title || 'Webtask')}" style="font-size:0.78rem;padding:5px 8px;">
-        </div>
-        <div style="margin-bottom:0.4rem;">
-          <label style="font-size:0.64rem;color:#94a3b8;">Target URL / Link *</label>
-          <input type="url" data-ed-field="url" class="admin-form-input font-mono" value="${escapeHtml(t.url || t.link || '')}" style="font-size:0.74rem;padding:5px 8px;">
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 0.8fr 1fr;gap:6px;margin-bottom:${showCostRow ? '0.4rem' : '0.45rem'};">
-          <div>
-            <label style="font-size:0.64rem;color:#94a3b8;">${rewardLabel}</label>
-            <input type="number" min="0" data-ed-field="reward" class="admin-form-input font-bold" value="${Number(rewardVal)}" style="font-size:0.75rem;padding:4px 6px;color:#fbbf24;">
-          </div>
-          <div>
-            <label style="font-size:0.64rem;color:#94a3b8;">Timer (s)</label>
-            <input type="number" min="0" data-ed-field="timer" class="admin-form-input font-mono" value="${Number(t.timerDuration || 0)}" style="font-size:0.75rem;padding:4px 6px;">
-          </div>
-          <div>
-            <label style="font-size:0.64rem;color:#94a3b8;">6-Digit Code</label>
-            <input type="text" maxlength="6" data-ed-field="code" class="admin-form-input font-mono font-bold" value="${escapeHtml(codeVal)}" style="font-size:0.75rem;padding:4px 6px;color:#fde047;">
-          </div>
-        </div>
-        ${showCostRow ? `
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:0.45rem;">
-            <div>
-              <label style="font-size:0.64rem;color:#94a3b8;">Unlock Currency</label>
-              <select data-ed-field="unlockCurrency" class="admin-form-input" style="font-size:0.72rem;padding:4px 6px;">
-                <option value="coins" ${costCurr === 'coins' ? 'selected' : ''}>🪙 Coins</option>
-                <option value="tickets" ${costCurr === 'tickets' ? 'selected' : ''}>🎟️ Tickets</option>
-                <option value="stars" ${costCurr === 'stars' ? 'selected' : ''}>⭐ Stars</option>
-                <option value="diamonds" ${costCurr === 'diamonds' ? 'selected' : ''}>💎 Diamonds</option>
-              </select>
-            </div>
-            <div>
-              <label style="font-size:0.64rem;color:#94a3b8;">Unlock Cost</label>
-              <input type="number" min="0" data-ed-field="unlockCost" class="admin-form-input font-bold" value="${costVal}" style="font-size:0.75rem;padding:4px 6px;">
-            </div>
-          </div>
-        ` : ''}
-        <div style="display:flex;justify-content:flex-end;">
-          <button type="button" onclick="saveSingleTaskFromEditor('${escapeHtml(t.id)}')" style="padding:4px 12px;border-radius:8px;border:none;background:linear-gradient(135deg,#0ea5e9,#0284c7);color:#fff;font-weight:800;font-size:0.72rem;cursor:pointer;">Save This Task ✓</button>
-        </div>
-      </div>
-    `;
-  }).join('');
-}
-
-function applyEditorRowToTask(rowEl, taskObj, cat) {
-  if (!rowEl || !taskObj) return;
-  const q = (f) => rowEl.querySelector(`[data-ed-field="${f}"]`);
-  const nextTitle = (q('title')?.value || '').trim() || taskObj.title || 'Webtask';
-  const nextUrl = (q('url')?.value || '').trim();
-  const nextCode = (q('code')?.value || '').trim();
-  const nextReward = Math.max(0, parseInt(q('reward')?.value || '0', 10) || 0);
-  const nextTimer = Math.max(0, parseInt(q('timer')?.value || '0', 10) || 0);
-  const nextActive = q('active') ? !!q('active').checked : true;
-
-  taskObj.title = nextTitle;
-  if (nextUrl) {
-    taskObj.url = nextUrl;
-    taskObj.link = nextUrl;
-  }
-  if (/^\d{4,6}$/.test(nextCode)) {
-    taskObj.verificationCode = nextCode;
-    taskObj.code = nextCode;
-    taskObj.secretCode = nextCode;
-  }
-  taskObj.timerDuration = nextTimer;
-  taskObj.active = nextActive;
-  taskObj.updatedAt = Date.now();
-
-  if (cat === 'common') taskObj.rewardTickets = nextReward;
-  else if (cat === 'simple' || cat === 'quiz') taskObj.rewardCoins = nextReward;
-  else if (cat === 'ultra') taskObj.inrReward = nextReward;
-  else taskObj.rewardStars = nextReward;
-
-  const costEl = q('unlockCost');
-  const currEl = q('unlockCurrency');
-  if (costEl && currEl) {
-    const cVal = Math.max(0, parseInt(costEl.value || '0', 10) || 0);
-    const cCurr = currEl.value || 'coins';
-    taskObj.unlockCost = cVal;
-    taskObj.unlockCurrency = cCurr;
-    if (cat === 'simple') taskObj.ticketCost = cCurr === 'tickets' ? cVal : 0;
-    if (cat === 'pro') {
-      taskObj.groupCostAmount = cVal;
-      taskObj.groupCostCurrency = cCurr;
-    }
-    if (cat === 'ultra') taskObj.starCost = cCurr === 'stars' ? cVal : 0;
-  }
-}
-
-function saveSingleTaskFromEditor(taskId) {
-  const cat = currentAdminCategoryTab || 'common';
-  const rowEl = document.querySelector(`#adminAllTasksEditorList [data-editor-task-id="${taskId}"]`);
-  const taskObj = tasksData.find(t => String(t.id) === String(taskId));
-  if (!rowEl || !taskObj) return;
-  applyEditorRowToTask(rowEl, taskObj, cat);
-  saveTasksAndSync();
-  showToast(`✓ Updated "${taskObj.title}"!`);
-}
-
-function saveAllTasksFromEditor() {
-  const cat = currentAdminCategoryTab || 'common';
-  const rows = document.querySelectorAll('#adminAllTasksEditorList [data-editor-task-id]');
-  let count = 0;
-  rows.forEach((rowEl) => {
-    const id = rowEl.getAttribute('data-editor-task-id');
-    const taskObj = tasksData.find(t => String(t.id) === String(id));
-    if (taskObj) {
-      applyEditorRowToTask(rowEl, taskObj, cat);
-      count++;
-    }
-  });
-  saveTasksAndSync();
-  showToast(`💾 Saved ${count} task(s) & synced to Firebase!`);
-  closeAdminAllTasksEditorPage();
-}
-
-function deleteTaskFromEditor(taskId) {
-  if (!confirm('Delete this task permanently?')) return;
-  tasksData = tasksData.filter(t => String(t.id) !== String(taskId));
-  saveTasksAndSync();
-  openAdminAllTasksEditorPage(currentAdminCategoryTab || 'common');
-  showToast('🗑️ Task deleted.');
-}
-
-function closeAdminAllTasksEditorPage() {
-  const editorView = document.getElementById('adminAllTasksEditorPageView');
-  const pageView = document.getElementById('adminTaskCategoryPageView');
-  if (editorView) editorView.style.display = 'none';
-  if (pageView) pageView.style.display = 'block';
-  renderAdminTasksList();
-}
-
-function handleAllEditTaskClick() {
-  openAdminAllTasksEditorPage(currentAdminCategoryTab || 'common');
-}
-window.openAdminAllTasksEditorPage = openAdminAllTasksEditorPage;
-window.closeAdminAllTasksEditorPage = closeAdminAllTasksEditorPage;
-window.saveSingleTaskFromEditor = saveSingleTaskFromEditor;
-window.saveAllTasksFromEditor = saveAllTasksFromEditor;
-window.deleteTaskFromEditor = deleteTaskFromEditor;
-window.handleAllEditTaskClick = handleAllEditTaskClick;
-
-/**
- * Load an existing task's data into the matching category form for editing
- * @param {string} taskId
- */
-function loadTaskIntoSlideUpForm(taskId) {
-  const task = tasksData.find(t => t.id === taskId);
-  if (!task) return;
-
-  const cat = currentAdminCategoryTab || 'common';
-  let currentCode = String(task.verificationCode || task.code || task.secretCode || '').trim();
-  if (!currentCode || !/^\d{6}$/.test(currentCode)) {
-    currentCode = Math.floor(100000 + Math.random() * 900000).toString();
-  }
-
-  const formatLocalDtVal = (ts) => {
-    if (!ts) return '';
-    const d = new Date(ts);
-    if (isNaN(d.getTime())) return '';
-    const p = (n) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
-  };
-
-  if (cat === 'common') {
-    switchPopupCommonMode('single');
-    document.getElementById('popupCommonEditId').value = task.id;
-    document.getElementById('popupCommonTitle').value = task.title || 'Webtask';
-    document.getElementById('popupCommonUrl').value = task.url || task.link || '';
-    document.getElementById('popupCommonRewardTickets').value = (task.rewardTickets !== undefined ? task.rewardTickets : (task.ticketReward !== undefined ? task.ticketReward : 50)).toString();
-    document.getElementById('popupCommonTimer').value = (task.timer !== undefined ? task.timer : (task.timerSeconds !== undefined ? task.timerSeconds : 10)).toString();
-    document.getElementById('popupCommonCode').value = currentCode;
-    document.getElementById('popupCommonActive').checked = (task.active !== false);
-    document.getElementById('btnSavePopupCommon').textContent = 'Update Common Task ✓';
-  } else if (cat === 'simple') {
-    document.getElementById('popupCoinEditId').value = task.id;
-    if (document.getElementById('popupCoinLevel')) document.getElementById('popupCoinLevel').value = (task.level || 1).toString();
-    document.getElementById('popupCoinTitle').value = task.title || 'Webtask';
-    document.getElementById('popupCoinUrl').value = task.url || task.link || '';
-    const coinCurr = task.unlockCurrency || (Number(task.coinCost || 0) > 0 ? 'coins' : (Number(task.starCost || 0) > 0 ? 'stars' : 'tickets'));
-    const coinAmt = task.unlockCost !== undefined ? task.unlockCost : (coinCurr === 'coins' ? task.coinCost : (coinCurr === 'stars' ? task.starCost : (task.ticketCost !== undefined ? task.ticketCost : 100)));
-    if (document.getElementById('popupCoinUnlockCurrency')) document.getElementById('popupCoinUnlockCurrency').value = coinCurr;
-    document.getElementById('popupCoinTicketCost').value = String(coinAmt || 0);
-    document.getElementById('popupCoinRewardCoins').value = (task.rewardCoins || task.reward || task.coins || 150).toString();
-    document.getElementById('popupCoinTimer').value = (task.timer !== undefined ? task.timer : (task.timerSeconds !== undefined ? task.timerSeconds : 10)).toString();
-    document.getElementById('popupCoinCode').value = currentCode;
-    document.getElementById('popupCoinActive').checked = (task.active !== false);
-    document.getElementById('btnSavePopupCoin').textContent = 'Update Coin Task ✓';
-  } else if (cat === 'premium') {
-    document.getElementById('popupStarEditId').value = task.id;
-    document.getElementById('popupStarLevel').value = (task.level || 1).toString();
-    document.getElementById('popupStarTitle').value = task.title || 'Webtask';
-    document.getElementById('popupStarUrl').value = task.url || task.link || '';
-    document.getElementById('popupStarRewardStars').value = (task.rewardStars || 20).toString();
-    document.getElementById('popupStarRewardCoins').value = (task.rewardCoins !== undefined ? task.rewardCoins : 200).toString();
-    document.getElementById('popupStarTimer').value = (task.timer !== undefined ? task.timer : (task.timerSeconds !== undefined ? task.timerSeconds : 15)).toString();
-    document.getElementById('popupStarCode').value = currentCode;
-    document.getElementById('popupStarActive').checked = (task.active !== false);
-    document.getElementById('btnSavePopupStar').textContent = 'Update Star Task ✓';
-  } else if (cat === 'pro') {
-    document.getElementById('popupProEditId').value = task.id;
-    if (document.getElementById('popupProCostCurrency')) document.getElementById('popupProCostCurrency').value = task.groupCostCurrency || task.unlockCurrency || 'coins';
-    document.getElementById('popupProPackageCoinCost').value = String(task.groupCostAmount !== undefined ? task.groupCostAmount : (task.coinCost || 5000));
-    document.getElementById('popupProRewardStars').value = (task.rewardStars || 1000).toString();
-    if (document.getElementById('popupProStartTime') && task.eventStartTime) document.getElementById('popupProStartTime').value = formatLocalDtVal(task.eventStartTime);
-    if (document.getElementById('popupProEndTime') && task.eventEndTime) document.getElementById('popupProEndTime').value = formatLocalDtVal(task.eventEndTime);
-
-    const packTasks = task.eventPackId ? tasksData.filter(t => t.eventPackId === task.eventPackId) : [task];
-    const t1 = packTasks[0] || task;
-    const t2 = packTasks[1] || task;
-    const t3 = packTasks[2] || task;
-
-    document.getElementById('popupProTask1Title').value = t1.title || 'Webtask 1';
-    document.getElementById('popupProTask1Url').value = t1.url || t1.link || 'https://youtube.com/';
-    document.getElementById('popupProTask1Code').value = String(t1.verificationCode || t1.code || '583921');
-
-    document.getElementById('popupProTask2Title').value = t2.title || 'Webtask 2';
-    document.getElementById('popupProTask2Url').value = t2.url || t2.link || 'https://telegram.org/';
-    document.getElementById('popupProTask2Code').value = String(t2.verificationCode || t2.code || '749201');
-
-    document.getElementById('popupProTask3Title').value = t3.title || 'Webtask 3';
-    document.getElementById('popupProTask3Url').value = t3.url || t3.link || 'https://google.com/';
-    document.getElementById('popupProTask3Code').value = String(t3.verificationCode || t3.code || '382910');
-
-    document.getElementById('popupProActive').checked = (task.active !== false);
-    document.getElementById('btnSavePopupPro').textContent = 'Update Pro Package ✓';
-  } else if (cat === 'ultra') {
-    document.getElementById('popupUltraEditId').value = task.id;
-    document.getElementById('popupUltraTitle').value = task.title || 'Webtask';
-    document.getElementById('popupUltraUrl').value = task.url || task.link || '';
-    if (document.getElementById('popupUltraCostCurrency')) document.getElementById('popupUltraCostCurrency').value = task.unlockCurrency || 'stars';
-    document.getElementById('popupUltraStarCost').value = String(task.unlockCost !== undefined ? task.unlockCost : (task.starCost || 50));
-    document.getElementById('popupUltraInrReward').value = (task.inrReward || 1500).toString();
-    handleUltraPriceCalc('stars');
-    if (task.giftCardType) document.getElementById('popupUltraGiftCardType').value = task.giftCardType;
-    document.getElementById('popupUltraTimer').value = (task.timer !== undefined ? task.timer : (task.timerSeconds !== undefined ? task.timerSeconds : 30)).toString();
-    document.getElementById('popupUltraCode').value = currentCode;
-    document.getElementById('popupUltraActive').checked = (task.active !== false);
-    document.getElementById('btnSavePopupUltra').textContent = 'Update Ultra Task ✓';
-  } else if (cat === 'quiz') {
-    document.getElementById('popupQuizEditId').value = task.id;
-    document.getElementById('popupQuizTitle').value = task.title || 'Quiz Mission';
-    document.getElementById('popupQuizUrl').value = task.url || task.link || 'https://google.com/';
-    document.getElementById('popupQuizCode').value = currentCode;
-    if (document.getElementById('popupQuizStartTime')) {
-      document.getElementById('popupQuizStartTime').value = formatLocalDtVal(task.startDateTime || task.createdAt || Date.now());
-    }
-    document.getElementById('popupQuizRewardCoins').value = (task.rewardCoins || 100).toString();
-    if (document.getElementById('popupQuizUnlockCurrency')) {
-      document.getElementById('popupQuizUnlockCurrency').value = task.unlockCurrency || 'coins';
-    }
-    if (document.getElementById('popupQuizUnlockCost')) {
-      document.getElementById('popupQuizUnlockCost').value = String(task.unlockCost !== undefined ? task.unlockCost : 0);
-    }
-    if (document.getElementById('popupQuizTimer')) {
-      document.getElementById('popupQuizTimer').value = (task.countdownSeconds || task.timer || task.timerSeconds || 300).toString();
-    }
-    document.getElementById('popupQuizActive').checked = (task.active !== false);
-    document.getElementById('btnSavePopupQuiz').textContent = 'Update Quiz Task ✓';
-  }
-
-  // Ensure ALL cost, link, code, and reward fields remain fully editable in Edit Mode
-  const costInputs = ['popupCoinTicketCost', 'popupProPackageCoinCost', 'popupUltraStarCost', 'popupQuizUnlockCost', 'taskInputTicketCost'];
-  costInputs.forEach(id => {
-    const el = document.getElementById(id);
-    if (el) {
-      el.readOnly = false;
-      el.style.opacity = '1';
-      el.style.cursor = 'text';
-      el.title = '';
-    }
-  });
-
-  // Ensure Target Link and 6-Digit Code are explicitly editable per user instruction
-  const linkAndCodeInputs = [
-    'popupCommonUrl', 'popupCommonCode',
-    'popupCoinUrl', 'popupCoinCode',
-    'popupStarUrl', 'popupStarCode',
-    'popupProTask1Url', 'popupProTask1Code',
-    'popupProTask2Url', 'popupProTask2Code',
-    'popupProTask3Url', 'popupProTask3Code',
-    'popupUltraUrl', 'popupUltraCode',
-    'popupQuizUrl', 'popupQuizCode',
-    'taskInputUrl', 'taskInputSecret'
-  ];
-  linkAndCodeInputs.forEach(id => {
-    const el = document.getElementById(id);
-    if (el) {
-      el.readOnly = false;
-      el.style.opacity = '1';
-      el.style.cursor = 'text';
-    }
-  });
-}
-window.loadTaskIntoSlideUpForm = loadTaskIntoSlideUpForm;
-
-function closeCategoryTaskPopup() {
-  if (_slideUpCloseTimer) { clearTimeout(_slideUpCloseTimer); _slideUpCloseTimer = null; }
-  const overlay = document.getElementById('adminCategoryTaskModalOverlay');
-  if (!overlay) return;
-  const card = overlay.querySelector('.admin-slideup-modal-card');
-  if (card) {
-    card.classList.add('closing');
-    _slideUpCloseTimer = setTimeout(() => {
-      _slideUpCloseTimer = null;
-      if (!card.classList.contains('closing')) return;
-      overlay.classList.remove('open');
-      overlay.style.display = 'none';
-      card.classList.remove('closing');
-    }, 200);
-  } else {
-    overlay.classList.remove('open');
-    overlay.style.display = 'none';
-  }
-}
-window.closeCategoryTaskPopup = closeCategoryTaskPopup;
-
-function handleSlideUpModalBackdropClick(e) {
-  if (e && e.target && e.target.id === 'adminCategoryTaskModalOverlay') {
-    closeCategoryTaskPopup();
-  }
-}
-window.handleSlideUpModalBackdropClick = handleSlideUpModalBackdropClick;
-
-function generatePopupSingleCode(targetInputId) {
-  const code = Math.floor(100000 + Math.random() * 900000).toString();
-  const input = document.getElementById(targetInputId);
-  if (input) input.value = code;
-  return code;
-}
-window.generatePopupSingleCode = generatePopupSingleCode;
-
-// -----------------------------------------------------------------------------
-// 5. COMMON TASK POPUP LOGIC (MULTIPLE LINKS BULK ADD ONLY IN COMMON)
-// -----------------------------------------------------------------------------
-
-function switchPopupCommonMode(mode) {
-  const modeInput = document.getElementById('popupCommonCreationMode');
-  if (modeInput) modeInput.value = mode;
-
-  const btnSingle = document.getElementById('btnCommonModeSingle');
-  const btnBulk = document.getElementById('btnCommonModeBulk');
-  const singleUrl = document.getElementById('groupCommonSingleUrl');
-  const bulkUrls = document.getElementById('groupCommonBulkUrls');
-  const singleCode = document.getElementById('groupCommonSingleCode');
-  const bulkCodes = document.getElementById('groupCommonBulkCodes');
-  const bulkSummary = document.getElementById('boxCommonBulkSummary');
-  const titleLabel = document.getElementById('lblPopupCommonTitle');
-  const inputUrl = document.getElementById('popupCommonUrl');
-  const inputCode = document.getElementById('popupCommonCode');
-
-  if (mode === 'bulk') {
-    btnSingle?.classList.remove('active');
-    btnBulk?.classList.add('active');
-    if (singleUrl) singleUrl.style.display = 'none';
-    if (bulkUrls) bulkUrls.style.display = 'block';
-    if (singleCode) singleCode.style.display = 'none';
-    if (bulkCodes) bulkCodes.style.display = 'block';
-    if (bulkSummary) bulkSummary.style.display = 'block';
-    if (titleLabel) titleLabel.textContent = 'Base Task Title for All Tasks *';
-    if (inputUrl) inputUrl.required = false;
-    if (inputCode) inputCode.required = false;
-    updatePopupCommonBulkCounter();
-  } else {
-    btnSingle?.classList.add('active');
-    btnBulk?.classList.remove('active');
-    if (singleUrl) singleUrl.style.display = 'block';
-    if (bulkUrls) bulkUrls.style.display = 'none';
-    if (singleCode) singleCode.style.display = 'block';
-    if (bulkCodes) bulkCodes.style.display = 'none';
-    if (bulkSummary) bulkSummary.style.display = 'none';
-    if (titleLabel) titleLabel.textContent = 'Task Title *';
-    if (inputUrl) inputUrl.required = true;
-    const saveBtn = document.getElementById('btnSavePopupCommon');
-    if (saveBtn) saveBtn.textContent = 'Save Common Task ✓';
-  }
-}
-window.switchPopupCommonMode = switchPopupCommonMode;
-
-function updatePopupCommonBulkCounter() {
-  const rawUrls = document.getElementById('popupCommonBulkUrls')?.value || '';
-  const urls = rawUrls.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
-  const rawCodes = document.getElementById('popupCommonBulkCodes')?.value || '';
-  const codes = rawCodes.split(/\r?\n/).map(c => c.trim()).filter(c => c.length > 0);
-
-  const badgeUrls = document.getElementById('badgeCommonBulkUrls');
-  if (badgeUrls) badgeUrls.textContent = `${urls.length} Link${urls.length === 1 ? '' : 's'}`;
-
-  const badgeCodes = document.getElementById('badgeCommonBulkCodes');
-  if (badgeCodes) badgeCodes.textContent = `${codes.length} Code${codes.length === 1 ? '' : 's'}`;
-
-  const summary = document.getElementById('textCommonBulkSummary');
-  if (summary) {
-    summary.textContent = urls.length > 0
-      ? `Ready to create ${urls.length} Common missions with ${codes.length} verification codes (Win: 50 Tickets).`
-      : 'Paste links above (one per line) to batch create Common Tasks.';
-  }
-
-  const saveBtn = document.getElementById('btnSavePopupCommon');
-  if (saveBtn && document.getElementById('popupCommonCreationMode')?.value === 'bulk') {
-    saveBtn.textContent = urls.length > 1 ? `Save ${urls.length} Common Tasks ✓` : 'Save Common Task ✓';
-  }
-}
-window.updatePopupCommonBulkCounter = updatePopupCommonBulkCounter;
-
-function autoGeneratePopupCommonBulkCodes() {
-  const rawUrls = document.getElementById('popupCommonBulkUrls')?.value || '';
-  const urls = rawUrls.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
-  if (urls.length === 0) {
-    showToast('Please paste target URLs first so codes match each link!');
-    return;
-  }
-  const codes = urls.map(() => Math.floor(100000 + Math.random() * 900000).toString());
-  const box = document.getElementById('popupCommonBulkCodes');
-  if (box) box.value = codes.join('\n');
-  updatePopupCommonBulkCounter();
-  showToast(`🎲 Generated ${codes.length} matching 6-digit codes!`);
-}
-window.autoGeneratePopupCommonBulkCodes = autoGeneratePopupCommonBulkCodes;
-
-function handleSavePopupCommonTask(e) {
-  e.preventDefault();
-  const editId = document.getElementById('popupCommonEditId')?.value;
-  const mode = document.getElementById('popupCommonCreationMode')?.value || 'single';
-  const title = document.getElementById('popupCommonTitle')?.value.trim() || 'Webtask';
-  const rewardTickets = parseInt(document.getElementById('popupCommonRewardTickets')?.value || '50', 10) || 50;
-  const timer = parseInt(document.getElementById('popupCommonTimer')?.value || '10', 10) || 0;
-  const active = document.getElementById('popupCommonActive')?.checked !== false;
-
-  // 1. Edit existing
-  if (editId) {
-    const url = document.getElementById('popupCommonUrl')?.value.trim();
-    let secretCode = document.getElementById('popupCommonCode')?.value.trim();
-    if (!url) {
-      showToast('Please enter a target URL.');
-      return;
-    }
-    if (!secretCode || !/^\d{6}$/.test(secretCode)) {
-      secretCode = Math.floor(100000 + Math.random() * 900000).toString();
-    }
-    const idx = tasksData.findIndex(t => t.id === editId);
-    if (idx !== -1) {
-      tasksData[idx] = {
-        ...tasksData[idx],
-        title,
-        url,
-        link: url,
-        category: 'common',
-        rewardTickets,
-        ticketReward: rewardTickets,
-        rewardCoins: 0,
-        unlockCost: 0,
-        unlockCurrency: 'coins',
-        ticketCost: 0,
-        timer,
-        timerSeconds: timer,
-        secretCode,
-        verificationCode: secretCode,
-        code: secretCode,
-        active,
-        updatedAt: Date.now()
-      };
-    }
-    saveTasksAndSync();
-    closeCategoryTaskPopup();
-    showToast(`Common Task updated! Verification Code: ${secretCode} ✓`);
-    return;
-  }
-
-  // 2. Bulk creation
-  if (mode === 'bulk') {
-    const rawUrls = document.getElementById('popupCommonBulkUrls')?.value || '';
-    const urls = rawUrls.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
-    if (urls.length === 0) {
-      showToast('Please paste at least one target link.');
-      return;
-    }
-    const rawCodes = document.getElementById('popupCommonBulkCodes')?.value || '';
-    const codes = rawCodes.split(/\r?\n/).map(c => c.trim()).filter(c => c.length > 0);
-    const now = Date.now();
-
-    for (let i = 0; i < urls.length; i++) {
-      let url = urls[i];
-      if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
-      const code = (codes[i] && codes[i].length >= 4) ? codes[i] : Math.floor(100000 + Math.random() * 900000).toString();
-      tasksData.push({
-        id: `task_common_${now}_${i}_${Math.random().toString(36).substring(2, 6)}`,
-        title,
-        url,
-        link: url,
-        category: 'common',
-        rewardTickets,
-        ticketReward: rewardTickets,
-        rewardCoins: 0,
-        unlockCost: 0,
-        unlockCurrency: 'coins',
-        ticketCost: 0,
-        timer,
-        timerSeconds: timer,
-        secretCode: code,
-        verificationCode: code,
-        code,
-        active,
-        createdAt: now + i,
-        updatedAt: now
-      });
-    }
-    saveTasksAndSync();
-    closeCategoryTaskPopup();
-    showToast(`🎉 ${urls.length} Common Tasks created in bulk! ✓`);
-    return;
-  }
-
-  // 3. Single creation
-  const url = document.getElementById('popupCommonUrl')?.value.trim();
-  let secretCode = document.getElementById('popupCommonCode')?.value.trim();
-  if (!url) {
-    showToast('Please enter a target URL.');
-    return;
-  }
-  if (!secretCode || !/^\d{6}$/.test(secretCode)) {
-    secretCode = Math.floor(100000 + Math.random() * 900000).toString();
-  }
-
-  tasksData.push({
-    id: `task_common_${Date.now()}`,
-    title,
-    url,
-    link: url,
-    category: 'common',
-    rewardTickets,
-    ticketReward: rewardTickets,
-    rewardCoins: 0,
-    unlockCost: 0,
-    unlockCurrency: 'coins',
-    ticketCost: 0,
-    timer,
-    timerSeconds: timer,
-    secretCode,
-    verificationCode: secretCode,
-    code: secretCode,
-    active,
-    createdAt: Date.now(),
-    updatedAt: Date.now()
-  });
-  saveTasksAndSync();
-  closeCategoryTaskPopup();
-  showToast(`New Common Task published! Code: ${secretCode} 📋`);
-}
-window.handleSavePopupCommonTask = handleSavePopupCommonTask;
-
-// -----------------------------------------------------------------------------
-// 6. COIN TASK POPUP LOGIC (OPEN COST: 100 TICKETS, WINNING: 150 COINS)
-// -----------------------------------------------------------------------------
-
-function handleSavePopupCoinTask(e) {
-  e.preventDefault();
-  const editId = document.getElementById('popupCoinEditId')?.value;
-  const taskLevel = parseInt(document.getElementById('popupCoinLevel')?.value || '1', 10) || 1;
-  const title = document.getElementById('popupCoinTitle')?.value.trim() || 'Webtask';
-  const url = document.getElementById('popupCoinUrl')?.value.trim();
-  const unlockCurrency = document.getElementById('popupCoinUnlockCurrency')?.value || 'tickets';
-  const unlockCost = Math.max(0, parseInt(document.getElementById('popupCoinTicketCost')?.value || '0', 10) || 0);
-  const ticketCost = unlockCurrency === 'tickets' ? unlockCost : 0;
-  const coinCost = unlockCurrency === 'coins' ? unlockCost : 0;
-  const starCost = unlockCurrency === 'stars' ? unlockCost : 0;
-  const diamondCost = unlockCurrency === 'diamonds' ? unlockCost : 0;
-  const rewardCoins = parseInt(document.getElementById('popupCoinRewardCoins')?.value || '150', 10) || 150;
-  const timer = parseInt(document.getElementById('popupCoinTimer')?.value || '10', 10) || 0;
-  let secretCode = document.getElementById('popupCoinCode')?.value.trim();
-  const active = document.getElementById('popupCoinActive')?.checked !== false;
-
-  if (!url) {
-    showToast('Please enter target URL.');
-    return;
-  }
-  if (!secretCode || !/^\d{6}$/.test(secretCode)) {
-    secretCode = Math.floor(100000 + Math.random() * 900000).toString();
-  }
-
-  const basePayload = {
-    title,
-    url,
-    link: url,
-    category: 'simple',
-    level: taskLevel,
-    unlockCurrency,
-    unlockCost,
-    ticketCost,
-    coinCost,
-    starCost,
-    diamondCost,
-    rewardCoins,
-    reward: rewardCoins,
-    coins: rewardCoins,
-    timer,
-    timerSeconds: timer,
-    secretCode,
-    verificationCode: secretCode,
-    code: secretCode,
-    active,
-    updatedAt: Date.now()
-  };
-
-  if (editId) {
-    const idx = tasksData.findIndex(t => t.id === editId);
-    if (idx !== -1) {
-      tasksData[idx] = { ...tasksData[idx], ...basePayload };
-    }
-    saveTasksAndSync();
-    closeCategoryTaskPopup();
-    showToast(`Coin Task updated! Cost: ${unlockCost} ${unlockCurrency}, Code: ${secretCode} 🪙`);
-    return;
-  }
-
-  tasksData.push({
-    id: `task_coin_${Date.now()}`,
-    ...basePayload,
-    createdAt: Date.now()
-  });
-
-  saveTasksAndSync();
-  closeCategoryTaskPopup();
-  showToast(`New Coin Task published! (Cost: ${unlockCost} ${unlockCurrency}, Win: ${rewardCoins} 🪙, Code: ${secretCode}) ✓`);
-}
-window.handleSavePopupCoinTask = handleSavePopupCoinTask;
-
-// -----------------------------------------------------------------------------
-// 7. STAR TASK POPUP LOGIC (TICKET COST REMOVED, WINNING: 20 STARS DEFAULT)
-// -----------------------------------------------------------------------------
-
-function handleSavePopupStarTask(e) {
-  e.preventDefault();
-  const editId = document.getElementById('popupStarEditId')?.value;
-  const taskLevel = parseInt(document.getElementById('popupStarLevel')?.value || '1', 10) || 1;
-  const title = document.getElementById('popupStarTitle')?.value.trim() || 'Webtask';
-  const url = document.getElementById('popupStarUrl')?.value.trim();
-  const rewardStars = parseInt(document.getElementById('popupStarRewardStars')?.value || '20', 10) || 20;
-  const rewardCoins = parseInt(document.getElementById('popupStarRewardCoins')?.value || '200', 10) || 200;
-  const timer = parseInt(document.getElementById('popupStarTimer')?.value || '15', 10);
-  let secretCode = document.getElementById('popupStarCode')?.value.trim();
-  const active = document.getElementById('popupStarActive')?.checked !== false;
-
-  if (!url) {
-    showToast('Please enter target URL.');
-    return;
-  }
-  if (!secretCode || !/^\d{6}$/.test(secretCode)) {
-    secretCode = Math.floor(100000 + Math.random() * 900000).toString();
-  }
-
-  if (editId) {
-    const idx = tasksData.findIndex(t => t.id === editId);
-    if (idx !== -1) {
-      tasksData[idx] = {
-        ...tasksData[idx],
-        title,
-        url,
-        link: url,
-        category: 'premium',
-        isShopTask: true,
-        level: taskLevel,
-        ticketCost: 0,
-        rewardStars,
-        rewardCoins,
-        reward: rewardCoins,
-        coins: rewardCoins,
-        timer,
-        timerSeconds: timer,
-        secretCode,
-        verificationCode: secretCode,
-        code: secretCode,
-        active,
-        updatedAt: Date.now()
-      };
-    }
-    saveTasksAndSync();
-    closeCategoryTaskPopup();
-    showToast(`Star Task updated! Code: ${secretCode} ⭐`);
-    return;
-  }
-
-  tasksData.push({
-    id: `task_star_${Date.now()}`,
-    title,
-    url,
-    link: url,
-    category: 'premium',
-    isShopTask: true,
-    level: taskLevel,
-    ticketCost: 0,
-    rewardStars,
-    rewardCoins,
-    reward: rewardCoins,
-    coins: rewardCoins,
-    timer,
-    timerSeconds: timer,
-    secretCode,
-    verificationCode: secretCode,
-    code: secretCode,
-    active,
-    createdAt: Date.now(),
-    updatedAt: Date.now()
-  });
-
-  saveTasksAndSync();
-  closeCategoryTaskPopup();
-  showToast(`New Star Task published! (Win: ${rewardStars} ⭐, Code: ${secretCode}) ✓`);
-}
-window.handleSavePopupStarTask = handleSavePopupStarTask;
-
-// -----------------------------------------------------------------------------
-// 8. PRO TASK POPUP LOGIC (3-TASK PACKAGE: COST 5000 COINS, WINNING 1000 STARS)
-// -----------------------------------------------------------------------------
-
-function setProEventDurationHours(hours) {
-  const now = new Date();
-  const end = new Date(Date.now() + hours * 3600 * 1000);
-
-  const startInput = document.getElementById('popupProStartTime');
-  const endInput = document.getElementById('popupProEndTime');
-  if (startInput) startInput.value = now.toISOString().slice(0, 16);
-  if (endInput) endInput.value = end.toISOString().slice(0, 16);
-
-  updateProEventStatusPreview();
-}
-window.setProEventDurationHours = setProEventDurationHours;
-
-function updateProEventStatusPreview() {
-  const startVal = document.getElementById('popupProStartTime')?.value;
-  const endVal = document.getElementById('popupProEndTime')?.value;
-  const badge = document.getElementById('popupProTimerPreviewBadge');
-  const hubTimer = document.getElementById('hubProEventTimerPreview');
-  if (!badge) return;
-
-  const now = Date.now();
-  const startTime = startVal ? new Date(startVal).getTime() : now;
-  const endTime = endVal ? new Date(endVal).getTime() : now + (24 * 3600 * 1000);
-
-  if (startTime > now) {
-    const diffHours = Math.ceil((startTime - now) / 3600000);
-    badge.textContent = `⏱️ Upcoming in ${diffHours}h`;
-    badge.style.color = '#fbbf24';
-    if (hubTimer) hubTimer.textContent = `⏱️ Upcoming (${diffHours}h)`;
-  } else if (endTime > now) {
-    const diffHours = Math.ceil((endTime - now) / 3600000);
-    badge.textContent = `⏱️ Active: Ends in ${diffHours}h`;
-    badge.style.color = '#34d399';
-    if (hubTimer) hubTimer.textContent = `⏱️ Ends in ${diffHours}h`;
-  } else {
-    badge.textContent = '⏱️ Event Ended';
-    badge.style.color = '#ef4444';
-    if (hubTimer) hubTimer.textContent = '⏱️ Ended';
-  }
-}
-window.updateProEventStatusPreview = updateProEventStatusPreview;
-
-function handleSavePopupProPackage(e) {
-  e.preventDefault();
-  const groupCostCurrency = document.getElementById('popupProCostCurrency')?.value || 'coins';
-  const groupCostAmount = Math.max(0, parseInt(document.getElementById('popupProPackageCoinCost')?.value || '5000', 10) || 0);
-  const rewardStars = Math.max(0, parseInt(document.getElementById('popupProRewardStars')?.value || '1000', 10) || 0);
-  const active = document.getElementById('popupProActive')?.checked !== false;
-
-  const startVal = document.getElementById('popupProStartTime')?.value;
-  const endVal = document.getElementById('popupProEndTime')?.value;
-  const eventStartTime = startVal ? new Date(startVal).getTime() : Date.now();
-  const eventEndTime = endVal ? new Date(endVal).getTime() : Date.now() + (24 * 3600 * 1000);
-  const timerMinutes = Math.max(1, Math.round((eventEndTime - eventStartTime) / 60000) || 1440);
-
-  const t1Title = document.getElementById('popupProTask1Title')?.value.trim() || 'Webtask 1';
-  const t1Url = document.getElementById('popupProTask1Url')?.value.trim() || 'https://youtube.com/';
-  const t1Code = document.getElementById('popupProTask1Code')?.value.trim() || '583921';
-
-  const t2Title = document.getElementById('popupProTask2Title')?.value.trim() || 'Webtask 2';
-  const t2Url = document.getElementById('popupProTask2Url')?.value.trim() || 'https://telegram.org/';
-  const t2Code = document.getElementById('popupProTask2Code')?.value.trim() || '749201';
-
-  const t3Title = document.getElementById('popupProTask3Title')?.value.trim() || 'Webtask 3';
-  const t3Url = document.getElementById('popupProTask3Url')?.value.trim() || 'https://google.com/';
-  const t3Code = document.getElementById('popupProTask3Code')?.value.trim() || '382910';
-
-  const sharedFields = {
-    category: 'pro',
-    groupCostCurrency,
-    groupCostAmount,
-    unlockCurrency: groupCostCurrency,
-    unlockCost: groupCostAmount,
-    coinCost: groupCostCurrency === 'coins' ? groupCostAmount : 0,
-    ticketCost: groupCostCurrency === 'tickets' ? groupCostAmount : 0,
-    starCost: groupCostCurrency === 'stars' ? groupCostAmount : 0,
-    diamondCost: groupCostCurrency === 'diamonds' ? groupCostAmount : 0,
-    eventStartTime,
-    eventEndTime,
-    timerMinutes,
-    active,
-    updatedAt: Date.now()
-  };
-
-  const editId = document.getElementById('popupProEditId')?.value;
-  if (editId) {
-    const existing = tasksData.find(t => t.id === editId);
-    const existingPackId = existing?.eventPackId || existing?.groupId;
-    const packIndices = existingPackId
-      ? tasksData.map((t, i) => ((t.eventPackId === existingPackId || t.groupId === existingPackId) ? i : -1)).filter(i => i !== -1)
-      : [tasksData.findIndex(t => t.id === editId)].filter(i => i !== -1);
-
-    if (packIndices.length >= 3) {
-      tasksData[packIndices[0]] = { ...tasksData[packIndices[0]], ...sharedFields, title: t1Title, url: t1Url, link: t1Url, rewardStars: Math.round(rewardStars * 0.25), secretCode: t1Code, verificationCode: t1Code, code: t1Code };
-      tasksData[packIndices[1]] = { ...tasksData[packIndices[1]], ...sharedFields, title: t2Title, url: t2Url, link: t2Url, rewardStars: Math.round(rewardStars * 0.25), secretCode: t2Code, verificationCode: t2Code, code: t2Code };
-      tasksData[packIndices[2]] = { ...tasksData[packIndices[2]], ...sharedFields, title: t3Title, url: t3Url, link: t3Url, rewardStars: Math.round(rewardStars * 0.5), secretCode: t3Code, verificationCode: t3Code, code: t3Code };
-    } else if (packIndices.length > 0) {
-      tasksData[packIndices[0]] = { ...tasksData[packIndices[0]], ...sharedFields, title: t1Title, url: t1Url, link: t1Url, rewardStars, secretCode: t1Code, verificationCode: t1Code, code: t1Code };
-    }
-    saveTasksAndSync();
-    if (window.TapEmpireUtils && typeof window.TapEmpireUtils.saveAppSettingsToCloud === 'function') {
-      window.TapEmpireUtils.saveAppSettingsToCloud({ proGroup: { costAmount: groupCostAmount, costCurrency: groupCostCurrency, timerMinutes, active } }).catch(() => {});
-    }
-    closeCategoryTaskPopup();
-    showToast(`🏆 Pro 3-Task Group updated! Cost: ${groupCostAmount.toLocaleString()} ${groupCostCurrency} ✓`);
-    return;
-  }
-
-  const packId = 'pack_' + Date.now();
-  const sub1 = { ...sharedFields, id: `task_pro_${Date.now()}_1`, title: t1Title, url: t1Url, link: t1Url, isEventTask: true, eventPackId: packId, groupId: packId, rewardStars: Math.round(rewardStars * 0.25), rewardCoins: 500, secretCode: t1Code, verificationCode: t1Code, code: t1Code, createdAt: Date.now() };
-  const sub2 = { ...sharedFields, id: `task_pro_${Date.now()}_2`, title: t2Title, url: t2Url, link: t2Url, isEventTask: true, eventPackId: packId, groupId: packId, rewardStars: Math.round(rewardStars * 0.25), rewardCoins: 500, secretCode: t2Code, verificationCode: t2Code, code: t2Code, createdAt: Date.now() + 1 };
-  const sub3 = { ...sharedFields, id: `task_pro_${Date.now()}_3`, title: t3Title, url: t3Url, link: t3Url, isEventTask: true, eventPackId: packId, groupId: packId, rewardStars: Math.round(rewardStars * 0.5), rewardCoins: 1000, secretCode: t3Code, verificationCode: t3Code, code: t3Code, createdAt: Date.now() + 2 };
-
-  tasksData.unshift(sub1, sub2, sub3);
-  saveTasksAndSync();
-  if (window.TapEmpireUtils && typeof window.TapEmpireUtils.saveAppSettingsToCloud === 'function') {
-    window.TapEmpireUtils.saveAppSettingsToCloud({ proGroup: { costAmount: groupCostAmount, costCurrency: groupCostCurrency, timerMinutes, active } }).catch(() => {});
-  }
-  closeCategoryTaskPopup();
-  showToast(`🏆 Pro 3-Task Group published! Cost: ${groupCostAmount.toLocaleString()} ${groupCostCurrency} ✓`);
-}
-window.handleSavePopupProPackage = handleSavePopupProPackage;
-
-// -----------------------------------------------------------------------------
-// 9. ULTRA TASK POPUP LOGIC (GIFT CARD IN INR & 1 STAR = RS 30 DYNAMIC CALC)
-// -----------------------------------------------------------------------------
-
-function handleUltraPriceCalc(source) {
-  const starInput = document.getElementById('popupUltraStarCost');
-  const inrInput = document.getElementById('popupUltraInrReward');
-  const currSelect = document.getElementById('popupUltraCostCurrency');
-  const feedback = document.getElementById('ultraCalcFeedback');
-  if (!starInput || !inrInput) return;
-
-  const curr = currSelect ? currSelect.value : 'stars';
-  const rawCost = parseInt(starInput.value || '0', 10);
-  const cost = isNaN(rawCost) ? 0 : Math.max(0, rawCost);
-  const rawInr = parseInt(inrInput.value || '1500', 10);
-  const inr = isNaN(rawInr) ? 1500 : Math.max(1, rawInr);
-
-  if (curr !== 'stars') {
-    if (feedback) feedback.textContent = `${cost.toLocaleString()} ${curr.toUpperCase()} • ₹${inr.toLocaleString()} Gift Card`;
-    return;
-  }
-
-  if (feedback) feedback.textContent = `${cost.toLocaleString()} Stars = ₹${inr.toLocaleString()} Gift Card`;
-}
-window.handleUltraPriceCalc = handleUltraPriceCalc;
-
-function handleSavePopupUltraTask(e) {
-  e.preventDefault();
-  const editId = document.getElementById('popupUltraEditId')?.value;
-  const title = document.getElementById('popupUltraTitle')?.value.trim() || 'Webtask';
-  const url = document.getElementById('popupUltraUrl')?.value.trim();
-  const unlockCurrency = document.getElementById('popupUltraCostCurrency')?.value || 'stars';
-  const unlockCost = Math.max(0, parseInt(document.getElementById('popupUltraStarCost')?.value || '0', 10) || 0);
-  const inrReward = Math.max(1, parseInt(document.getElementById('popupUltraInrReward')?.value || '1500', 10) || 1500);
-  const giftCardType = document.getElementById('popupUltraGiftCardType')?.value.trim() || 'Amazon / UPI Voucher';
-  const timer = parseInt(document.getElementById('popupUltraTimer')?.value || '30', 10) || 0;
-  let secretCode = document.getElementById('popupUltraCode')?.value.trim();
-  const active = document.getElementById('popupUltraActive')?.checked !== false;
-
-  if (!url) {
-    showToast('Please enter target URL.');
-    return;
-  }
-  if (!secretCode || !/^\d{6}$/.test(secretCode)) {
-    secretCode = Math.floor(100000 + Math.random() * 900000).toString();
-  }
-
-  const ultraPayload = {
-    title,
-    url,
-    link: url,
-    category: 'ultra',
-    unlockCurrency,
-    unlockCost,
-    starCost: unlockCurrency === 'stars' ? unlockCost : 0,
-    coinCost: unlockCurrency === 'coins' ? unlockCost : 0,
-    ticketCost: unlockCurrency === 'tickets' ? unlockCost : 0,
-    diamondCost: unlockCurrency === 'diamonds' ? unlockCost : 0,
-    inrReward,
-    giftCardType,
-    rewardCoins: 5000,
-    rewardStars: unlockCurrency === 'stars' ? unlockCost : 0,
-    timer,
-    timerSeconds: timer,
-    secretCode,
-    verificationCode: secretCode,
-    code: secretCode,
-    active,
-    updatedAt: Date.now()
-  };
-
-  if (editId) {
-    const idx = tasksData.findIndex(t => t.id === editId);
-    if (idx !== -1) {
-      tasksData[idx] = { ...tasksData[idx], ...ultraPayload };
-    }
-    saveTasksAndSync();
-    closeCategoryTaskPopup();
-    showToast(`Ultra Task updated! Cost: ${unlockCost} ${unlockCurrency}, Code: ${secretCode} ⚡`);
-    return;
-  }
-
-  tasksData.push({
-    id: `task_ultra_${Date.now()}`,
-    ...ultraPayload,
-    createdAt: Date.now()
-  });
-
-  saveTasksAndSync();
-  closeCategoryTaskPopup();
-  showToast(`New Ultra Task published! (Cost: ${unlockCost} ${unlockCurrency}, Win: ₹${inrReward.toLocaleString()} Gift Card, Code: ${secretCode}) ⚡`);
-}
-window.handleSavePopupUltraTask = handleSavePopupUltraTask;
-
-// -----------------------------------------------------------------------------
-// 9b. QUIZ TASK POPUP LOGIC (6 REQUIRED FIELDS, NO LEVEL SELECTOR)
-// -----------------------------------------------------------------------------
-
-function handleSavePopupQuizTask(e) {
-  e.preventDefault();
-  const editId = document.getElementById('popupQuizEditId')?.value;
-  const title = document.getElementById('popupQuizTitle')?.value.trim() || 'Quiz Mission';
-  const url = document.getElementById('popupQuizUrl')?.value.trim() || 'https://google.com/';
-  let secretCode = document.getElementById('popupQuizCode')?.value.trim();
-  const startRaw = document.getElementById('popupQuizStartTime')?.value || '';
-  const startMs = startRaw ? new Date(startRaw).getTime() : Date.now();
-  const rewardCoins = Math.max(1, parseInt(document.getElementById('popupQuizRewardCoins')?.value || '100', 10) || 100);
-  const unlockCurrency = document.getElementById('popupQuizUnlockCurrency')?.value || 'coins';
-  const unlockCost = Math.max(0, parseInt(document.getElementById('popupQuizUnlockCost')?.value || '0', 10) || 0);
-  const timerSec = Math.max(10, parseInt(document.getElementById('popupQuizTimer')?.value || '300', 10) || 300);
-  const active = document.getElementById('popupQuizActive')?.checked !== false;
-
-  if (!url) {
-    showToast('Please enter task link.');
-    return;
-  }
-  if (!secretCode || !/^\d{6}$/.test(secretCode)) {
-    secretCode = Math.floor(100000 + Math.random() * 900000).toString();
-  }
-
-  const quizPayload = {
-    title,
-    url,
-    link: url,
-    category: 'quiz',
-    startDateTime: startMs,
-    rewardCoins,
-    reward: rewardCoins,
-    coins: rewardCoins,
-    unlockCurrency,
-    unlockCost,
-    coinCost: unlockCurrency === 'coins' ? unlockCost : 0,
-    ticketCost: unlockCurrency === 'tickets' ? unlockCost : 0,
-    starCost: unlockCurrency === 'stars' ? unlockCost : 0,
-    diamondCost: unlockCurrency === 'diamonds' ? unlockCost : 0,
-    timer: timerSec,
-    timerSeconds: timerSec,
-    countdownSeconds: timerSec,
-    secretCode,
-    verificationCode: secretCode,
-    code: secretCode,
-    active,
-    updatedAt: Date.now()
-  };
-
-  if (editId) {
-    const idx = tasksData.findIndex(t => t.id === editId);
-    if (idx !== -1) {
-      tasksData[idx] = { ...tasksData[idx], ...quizPayload };
-    }
-    saveTasksAndSync();
-    closeCategoryTaskPopup();
-    showToast(`🧠 Quiz Task updated! Code: ${secretCode}`);
-    return;
-  }
-
-  tasksData.push({
-    id: `task_quiz_${Date.now()}`,
-    ...quizPayload,
-    createdAt: Date.now()
-  });
-
-  saveTasksAndSync();
-  closeCategoryTaskPopup();
-  showToast(`🎉 New Quiz Task published! Code: ${secretCode} 🧠`);
-}
-window.handleSavePopupQuizTask = handleSavePopupQuizTask;
-
-// -----------------------------------------------------------------------------
-// 10. EDITING & RENDERING TASKS LIST
-// -----------------------------------------------------------------------------
-
-function openEditTaskModal(taskId) {
-  const task = tasksData.find(t => t.id === taskId);
-  if (!task) return;
-
-  // Determine category
-  let cat = task.category || 'common';
-  if (task.category === 'coin') cat = 'simple';
-  if (task.category === 'star') cat = 'premium';
-
-  // Ensure category page is open
-  currentAdminCategoryTab = cat;
-  openAdminTaskCategoryPage(cat);
-
-  // Open slide-up popup in Edit mode with target task loaded
-  openEditCategoryTaskPopup(taskId);
-}
-window.openEditTaskModal = openEditTaskModal;
-
-function openCreateTaskModal() {
-  openAddCategoryTaskPopup();
-}
-window.openCreateTaskModal = openCreateTaskModal;
-
-function renderAdminTasksList() {
-  const container = document.getElementById('adminTasksList');
-  if (!container) return;
-
-  const searchVal = (document.getElementById('adminTaskSearch')?.value || '').toLowerCase().trim();
-  let list = [...tasksData];
-
-  // 1. Filter by active category tab
-  if (currentAdminCategoryTab === 'common') {
-    list = list.filter(t => t.category === 'common');
-  } else if (currentAdminCategoryTab === 'simple') {
-    list = list.filter(t => (t.category === 'simple' || t.category === 'coin') && t.category !== 'common' && t.category !== 'pro' && t.category !== 'ultra' && !t.isShopTask && t.category !== 'quiz');
-  } else if (currentAdminCategoryTab === 'premium') {
-    list = list.filter(t => (t.category === 'premium' || t.category === 'star' || t.isShopTask || t.category === 'shop_task') && t.category !== 'common' && t.category !== 'pro' && t.category !== 'ultra' && t.category !== 'quiz');
-  } else if (currentAdminCategoryTab === 'pro') {
-    list = list.filter(t => t.category === 'pro' || t.category === 'elite');
-  } else if (currentAdminCategoryTab === 'ultra') {
-    list = list.filter(t => t.category === 'ultra');
-  } else if (currentAdminCategoryTab === 'quiz') {
-    list = list.filter(t => t.category === 'quiz');
-  }
-
-  // 2. Filter by level if selected (Star/Coin only)
-  if (currentAdminLevelFilter !== 'all' && !['common', 'pro', 'ultra', 'quiz'].includes(currentAdminCategoryTab)) {
-    list = list.filter(t => Number(t.level || 1) === currentAdminLevelFilter);
-  }
-
-  // 3. Search filter
-  if (searchVal) {
-    list = list.filter(t => t.title && t.title.toLowerCase().includes(searchVal));
-  }
-
-  updateAdminCounters();
-
-  if (list.length === 0) {
-    container.innerHTML = `
-      <div style="text-align: center; padding: 2rem 1rem; color: #94a3b8; font-size: 0.85rem; background: #0a1738; border-radius: 14px; border: 1px dashed rgba(56, 189, 248, 0.25);">
-        <div style="font-size: 2.2rem; margin-bottom: 0.5rem;">📋</div>
-        <div style="font-weight: 800; color: #ffffff; margin-bottom: 0.25rem;">${searchVal ? 'No tasks match search' : 'No Tasks in this Category Yet'}</div>
-        <div style="font-size: 0.75rem; color: #64748b; margin-bottom: 0.75rem;">Click "＋ Add Task" above to publish tasks immediately.</div>
-        <button class="btn-card-action" onclick="openAddCategoryTaskPopup()">＋ Add Task Now</button>
-      </div>
-    `;
-    return;
-  }
-
-  const currIconMap = { coins: '🪙', tickets: '🎟️', stars: '⭐', diamonds: '💎' };
-
-  container.innerHTML = list.map(task => {
-    const isActive = task.active !== false;
-    const taskCode = task.verificationCode || task.code || task.secretCode || '';
-
-    let catBadge = '📋 Common Task';
-    let borderColor = '#38bdf8';
-    let rewardLabel = `+${task.rewardTickets || 50} 🎟️`;
-    let costLabel = '';
-    const showLevel = !['common', 'pro', 'elite', 'ultra', 'quiz'].includes(task.category);
-
-    if (task.category === 'quiz') {
-      catBadge = '🧠 Quiz Task';
-      borderColor = '#10b981';
-      rewardLabel = `+${Number(task.rewardCoins || 100).toLocaleString()} 🪙`;
-      const qCost = Number(task.unlockCost || 0);
-      if (qCost > 0) costLabel = `Cost: ${qCost} ${currIconMap[task.unlockCurrency || 'coins'] || '🪙'}`;
-    } else if (task.category === 'ultra') {
-      catBadge = '⚡ Ultra Task';
-      borderColor = '#d946ef';
-      rewardLabel = `🎁 ₹${(task.inrReward || 1500).toLocaleString()} Voucher`;
-      const uCost = task.unlockCost !== undefined ? Number(task.unlockCost) : Number(task.starCost || 50);
-      costLabel = `Cost: ${uCost} ${currIconMap[task.unlockCurrency || 'stars'] || '⭐'}`;
-    } else if (task.category === 'pro' || task.category === 'elite') {
-      catBadge = '💎 Pro Task';
-      borderColor = '#34d399';
-      rewardLabel = `+${task.rewardStars || 1000} ⭐`;
-      const pCost = task.groupCostAmount !== undefined ? Number(task.groupCostAmount) : Number(task.coinCost || 5000);
-      costLabel = `Group: ${pCost} ${currIconMap[task.groupCostCurrency || task.unlockCurrency || 'coins'] || '🪙'}`;
-    } else if (task.category === 'premium' || task.category === 'star' || task.isShopTask || task.category === 'shop_task') {
-      catBadge = '⭐ Star Task';
-      borderColor = '#a855f7';
-      rewardLabel = `+${task.rewardStars || 20} ⭐`;
-    } else if (task.category === 'simple' || task.category === 'coin') {
-      catBadge = '🪙 Coin Task';
-      borderColor = '#fbbf24';
-      rewardLabel = `+${task.rewardCoins || 150} 🪙`;
-      const cCost = task.unlockCost !== undefined ? Number(task.unlockCost) : Number(task.ticketCost !== undefined ? task.ticketCost : 100);
-      costLabel = `Cost: ${cCost} ${currIconMap[task.unlockCurrency || 'tickets'] || '🎟️'}`;
-    }
-
-    return `
-      <div class="admin-task-card ${isCategoryQuickEditActive ? 'quick-edit-highlight' : ''}" style="border-left: 3.5px solid ${isActive ? borderColor : '#64748b'};">
-        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem;">
-          <div>
-            <h4 style="font-size: 0.92rem; font-weight: 800; color: #ffffff; margin: 0.15rem 0 0.25rem 0;">${escapeHtml(task.title || 'Webtask')}</h4>
-            <div style="font-size: 0.72rem; color: #38bdf8; line-height: 1.3; font-family: monospace; word-break: break-all;">${escapeHtml(task.url || task.link || '')}</div>
-          </div>
-          <span style="font-size: 0.65rem; font-weight: 800; padding: 2px 6px; border-radius: 6px; background: ${isActive ? 'rgba(52, 211, 153, 0.15)' : 'rgba(148, 163, 184, 0.15)'}; color: ${isActive ? '#34d399' : '#94a3b8'};">
-            ${isActive ? 'Active 🟢' : 'Paused ⚪'}
-          </span>
-        </div>
-
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 0.65rem; padding-top: 0.5rem; border-top: 1px solid rgba(255, 255, 255, 0.05); font-size: 0.75rem;">
-          <div style="display: flex; gap: 0.5rem; font-weight: 800; align-items: center; flex-wrap: wrap;">
-            <span style="color: #fbbf24; font-weight: 900;">${rewardLabel}</span>
-            ${costLabel ? `<span class="count-badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; font-size: 0.68rem; padding: 2px 6px;">${costLabel}</span>` : ''}
-            <span class="count-badge" style="background: rgba(255, 255, 255, 0.08); color: #cbd5e1; font-size: 0.68rem; padding: 2px 6px;">${catBadge}</span>
-            ${showLevel ? `<span class="count-badge" style="background: rgba(250, 204, 21, 0.15); color: #facc15; font-size: 0.68rem; padding: 2px 6px;">⭐ Lvl ${task.level || 1}</span>` : ''}
-            <span style="color: #38bdf8; font-family: monospace; font-size: 0.76rem; font-weight: 800; background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.35); padding: 2px 8px; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px;">
-              <span>🔑 Code:</span> <b style="color: #facc15; font-size: 0.85rem; letter-spacing: 0.08em;">${escapeHtml(taskCode || '000000')}</b>
-            </span>
-          </div>
-
-          <div style="display: flex; gap: 0.35rem;">
-            <button class="btn-card-action btn-task-edit-action" onclick="openEditTaskModal('${task.id}')" title="Edit this task in popup">✏️ Edit</button>
-            <button class="btn-card-action" onclick="toggleTaskActive('${task.id}')" title="Toggle active status">${isActive ? 'Pause' : 'Play'}</button>
-            <button class="btn-card-action danger" onclick="deleteAdminTask('${task.id}')" title="Delete Mission">🗑️</button>
-          </div>
-        </div>
-      </div>
-    `;
-  }).join('');
-}
-window.renderAdminTasksList = renderAdminTasksList;
-
-function handleAdminTaskSearch(val) {
-  renderAdminTasksList();
-}
-window.handleAdminTaskSearch = handleAdminTaskSearch;
-
-// Legacy modal helpers maintained for test backward compatibility
-function closeAdminTaskModal() {
-  closeCategoryTaskPopup();
-}
-window.closeAdminTaskModal = closeAdminTaskModal;
-
-function handleTaskModalBackdropClick(e) {
-  closeCategoryTaskPopup();
-}
-window.handleTaskModalBackdropClick = handleTaskModalBackdropClick;
-
-function generateRandomTaskCode() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-}
-window.generateRandomTaskCode = generateRandomTaskCode;
-
-function switchAdminTaskMode(mode) {
-  switchPopupCommonMode(mode);
-}
-window.switchAdminTaskMode = switchAdminTaskMode;
-
-function updateBulkTaskCounter() {
-  updatePopupCommonBulkCounter();
-}
-window.updateBulkTaskCounter = updateBulkTaskCounter;
-
-function generateRandomSingleCode() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-}
-window.generateRandomSingleCode = generateRandomSingleCode;
-
-function autoGenerateAllBulkCodes() {
-  autoGeneratePopupCommonBulkCodes();
-}
-window.autoGenerateAllBulkCodes = autoGenerateAllBulkCodes;
-
-function handleAdminTaskCategoryChange(val) {
-  openAdminTaskCategoryPage(val);
-}
-window.handleAdminTaskCategoryChange = handleAdminTaskCategoryChange;
-
-function handleSaveAdminTaskForm(e) {
-  e.preventDefault();
-  handleSavePopupCommonTask(e);
-}
-window.handleSaveAdminTaskForm = handleSaveAdminTaskForm;
-
-function toggleTaskActive(taskId) {
-  const task = tasksData.find(t => t.id === taskId);
-  if (!task) return;
-  task.active = (task.active === false);
-  saveTasksAndSync();
-  showToast(`Mission ${task.active ? 'activated' : 'paused'}.`);
-}
-
-function deleteAdminTask(taskId) {
-  if (!confirm('Are you sure you want to delete this mission?')) return;
-  tasksData = tasksData.filter(t => t.id !== taskId);
-  saveTasksAndSync();
-  showToast('Mission deleted.');
-}
-
-function resetPlayerCooldowns() {
-  localStorage.removeItem(CLAIMS_STORAGE_KEY);
-  localStorage.setItem(SYNC_FLAG_KEY, Date.now().toString());
-  if (syncChannel) {
-    syncChannel.postMessage({ type: 'CLAIMS_UPDATED', timestamp: Date.now() });
-  }
-  showToast('🔄 All player mission cooldowns reset! ✓');
-}
-
-// Zero demo tasks: always empty until Admin creates real tasks
-const CANONICAL_BASIC_DEFAULT_TASKS = [];
-
-function restoreAndRenewAllTasks() {
-  if (!confirm("Are you sure you want to restore all basic missions and renew all tasks for all players?\n\nThis will reset all completion records so that both completed and non-completed tasks are refreshed back to active and visible in the app!")) {
-    return;
-  }
-
-  // 1. Reset all completed task tracking across all storage keys
-  localStorage.setItem('task_game_completed_tasks', '{}');
-  localStorage.setItem('task_completed_tasks', '{}');
-  localStorage.removeItem(CLAIMS_STORAGE_KEY);
-  localStorage.removeItem('task_game_claims');
-  localStorage.setItem('completed_tasks_count', '0');
-  localStorage.setItem('task_game_total_tasks_completed', '0');
-  localStorage.setItem('task_pass_total_completed', '0');
-
-  // Reset all balances (coins, stars, tickets) to 0
-  localStorage.setItem('task_game_coins', '0');
-  localStorage.setItem('user_coins', '0');
-  localStorage.setItem('task_game_stars', '0');
-  localStorage.setItem('user_stars', '0');
-  localStorage.setItem('task_user_tickets', '0');
-  localStorage.setItem('user_tickets', '0');
-  localStorage.setItem('task_game_tickets', '0');
-  if (typeof updateAllDomBalances === 'function') {
-    updateAllDomBalances(0, 0, 0);
-  }
-
-  // Clear any temporary task open/claim state
-  for (let i = localStorage.length - 1; i >= 0; i--) {
-    const k = localStorage.key(i);
-    if (k && (k.startsWith('task_opened_') || k.startsWith('task_claimed_'))) {
-      localStorage.removeItem(k);
-    }
-  }
-
-  // 2. Renew player claims without injecting any demo tasks
-  tasksData = [];
-  localStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(tasksData));
-  localStorage.setItem('admin_tasks', JSON.stringify(tasksData));
-
-  // 3. Set sync flags
-  localStorage.setItem(SYNC_FLAG_KEY, Date.now().toString());
-  localStorage.setItem('task_restore_flag', Date.now().toString());
-
-  // 4. Broadcast to other open windows / tabs
-  if (syncChannel) {
-    syncChannel.postMessage({ type: 'TASKS_RESTORED', timestamp: Date.now() });
-    syncChannel.postMessage({ type: 'TASKS_UPDATED', timestamp: Date.now() });
-    syncChannel.postMessage({ type: 'CLAIMS_UPDATED', timestamp: Date.now() });
-    syncChannel.postMessage({ type: 'BALANCES_UPDATED', coins: 0, stars: 0, tickets: 0, timestamp: Date.now() });
-  }
-  try {
-    const bc = new BroadcastChannel('nova_task_sync');
-    bc.postMessage({ type: 'TASKS_RESTORED', timestamp: Date.now() });
-    bc.postMessage({ type: 'TASKS_UPDATED', timestamp: Date.now() });
-    bc.postMessage({ type: 'BALANCES_UPDATED', coins: 0, stars: 0, tickets: 0, timestamp: Date.now() });
-    bc.close();
-  } catch(e) {}
-
-  // 5. Cloud sync if Firebase is present
-  if (window.Firebase && typeof window.Firebase.saveTasksToCloud === 'function') {
-    window.Firebase.saveTasksToCloud(tasksData);
-  }
-
-  // 6. Refresh admin UI
-  renderAdminTasksList();
-  showToast('🔄 All missions restored to basic state and renewed for all players! ✓');
-}
-window.restoreAndRenewAllTasks = restoreAndRenewAllTasks;
-
-function saveTasksAndSync() {
-  localStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(tasksData));
-  localStorage.setItem('admin_tasks', JSON.stringify(tasksData));
-  localStorage.setItem(SYNC_FLAG_KEY, Date.now().toString());
-  if (syncChannel) {
-    syncChannel.postMessage({ type: 'TASKS_UPDATED', timestamp: Date.now() });
-  }
-  if (window.Firebase && typeof window.Firebase.saveTasksToCloud === 'function') {
-    window.Firebase.saveTasksToCloud(tasksData);
-  }
-  renderAdminTasksList();
-}
-
-// -----------------------------------------------------------------------------
-// 2. ALL USERS SUBVIEW LOGIC
-// -----------------------------------------------------------------------------
-
-function renderAdminUsersList() {
-  const container = document.getElementById('adminUsersList');
-  if (!container) return;
-
-  const searchVal = (document.getElementById('adminUserSearch')?.value || '').toLowerCase().trim();
-  let list = [...usersData];
-  if (searchVal) {
-    list = list.filter(u => 
-      (u.name && u.name.toLowerCase().includes(searchVal)) || 
-      (u.id && u.id.toLowerCase().includes(searchVal)) ||
-      (u.username && u.username.toLowerCase().includes(searchVal)) ||
-      (u.email && u.email.toLowerCase().includes(searchVal))
-    );
-  }
-
-  // Update metrics
-  const totUsers = document.getElementById('adminTotalUsers');
-  const actUsers = document.getElementById('adminActiveUsers');
-  const totCoins = document.getElementById('adminTotalCoins');
-
-  const activeCount = usersData.filter(u => u.status === 'active' || (!u.status || (u.status !== 'suspended' && u.status !== 'inactive'))).length;
-  const coinsSum = usersData.reduce((acc, u) => acc + Number(u.coins || 0), 0);
-
-  if (totUsers) totUsers.textContent = usersData.length.toString();
-  if (actUsers) actUsers.textContent = activeCount.toString();
-  if (totCoins) totCoins.textContent = `${coinsSum.toLocaleString()} 🪙`;
-
-  updateAdminCounters();
-
-  if (list.length === 0) {
-    container.innerHTML = `<div style="text-align: center; padding: 2rem; color: #94a3b8; font-size: 0.85rem;">No players found matching "${searchVal}".</div>`;
-    return;
-  }
-
-  container.innerHTML = list.map(user => {
-    const isSusp = user.status === 'suspended';
-    return `
-      <div class="admin-user-card" style="display: flex !important; flex-direction: row !important; justify-content: space-between !important; align-items: center !important; flex-wrap: nowrap !important; background: #0a1738; border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 12px; padding: 0.55rem 0.85rem; margin-bottom: 0.45rem; gap: 0.5rem; width: 100%; box-sizing: border-box;">
-        <!-- 1. Icon & 2. Name & Stats -->
-        <div style="display: flex; align-items: center; gap: 0.5rem; min-width: 0; flex: 1; overflow: hidden; white-space: nowrap;">
-          <span style="font-size: 1.35rem; line-height: 1; flex-shrink: 0;">${user.avatar || '⚡'}</span>
-          <div style="display: flex; flex-direction: column; min-width: 0; overflow: hidden;">
-            <div style="display: flex; align-items: center; gap: 4px; overflow: hidden;">
-              <span style="font-size: 0.9rem; font-weight: 800; color: #ffffff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(user.name || 'Player')}</span>
-              ${user.id === 'usr_1' ? '<span style="font-size: 0.62rem; background: #0284c7; color: #fff; font-weight: 800; padding: 1px 4px; border-radius: 4px;">YOU</span>' : ''}
-              ${isSusp ? '<span style="font-size: 0.62rem; background: #ef4444; color: #fff; font-weight: 800; padding: 1px 4px; border-radius: 4px;">SUSPENDED</span>' : ''}
-            </div>
-            <div style="display: flex; gap: 6px; font-size: 0.72rem; margin-top: 2px;">
-              <span style="color: #38bdf8; font-weight: 800;">🎯 ${Number(user.eventTasks || 0)} Tasks</span>
-              <span style="color: #64748b;">•</span>
-              <span style="color: #fbbf24; font-weight: 800;">🪙 ${Number(user.coins || 0).toLocaleString()}</span>
-              <span style="color: #64748b;">•</span>
-              <span style="color: #facc15; font-weight: 800;">⭐ ${Number(user.stars || 0).toLocaleString()}</span>
-              <span style="color: #64748b;">•</span>
-              <span style="color: #c084fc; font-weight: 800;">🎟️ ${Number(user.tickets || 0).toLocaleString()}</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- 3. Edit Button & 4. Detail Button & 5. Delete Button -->
-        <div style="display: flex; gap: 0.35rem; align-items: center; flex-shrink: 0; white-space: nowrap;">
-          <!-- Direct Edit Button -->
-          <button type="button" class="btn-card-action" onclick="openEditUserModal('${user.id}')" title="Edit player name, tasks, coins, stars" style="display: inline-flex; align-items: center; gap: 3px; padding: 5px 8px; font-size: 0.72rem; font-weight: 800; background: rgba(56, 189, 248, 0.2); border: 1px solid rgba(56, 189, 248, 0.5); color: #38bdf8; border-radius: 7px; cursor: pointer; white-space: nowrap; flex-shrink: 0;">
-            <span>✏️ Edit</span>
-          </button>
-
-          <!-- Detail Button -->
-          <button type="button" class="btn-card-action" onclick="openUserDetailModal('${user.id}')" title="View player full details" style="display: inline-flex; align-items: center; gap: 3px; padding: 5px 8px; font-size: 0.72rem; font-weight: 800; background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.4); color: #c084fc; border-radius: 7px; cursor: pointer; white-space: nowrap; flex-shrink: 0;">
-            <span>🔍 Detail</span>
-          </button>
-
-          <!-- Direct Reset Button -->
-          <button type="button" class="btn-card-action" onclick="directResetUser('${user.id}')" title="Reset all account data to zero" style="display: inline-flex; align-items: center; gap: 3px; padding: 5px 7px; font-size: 0.72rem; font-weight: 800; background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.4); color: #fbbf24; border-radius: 7px; cursor: pointer; white-space: nowrap; flex-shrink: 0;">
-            <span>🔄 Reset</span>
-          </button>
-
-          <!-- Direct Delete Button -->
-          <button type="button" class="btn-card-action" onclick="directDeleteUser('${user.id}')" title="Permanently delete player" style="display: inline-flex; align-items: center; gap: 3px; padding: 5px 7px; font-size: 0.72rem; font-weight: 800; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #f87171; border-radius: 7px; cursor: pointer; white-space: nowrap; flex-shrink: 0;">
-            <span>🗑️</span>
-          </button>
-        </div>
-      </div>
-    `;
-  }).join('');
-}
-
-function toggleUserActiveStatus(userId) {
-  const user = usersData.find(u => u.id === userId);
-  if (!user) return;
-  const isCurrentlyActive = user.status === 'active' || (!user.status || (user.status !== 'inactive' && user.status !== 'suspended'));
-  user.status = isCurrentlyActive ? 'inactive' : 'active';
-
-  // Save status to Firebase Cloud
-  const cloudSaver = (window.Firebase && window.Firebase.saveUserToCloud) || window.saveUserToCloud;
-  if (typeof cloudSaver === 'function') {
-    cloudSaver({
-      id: user.id,
-      uid: user.id,
-      displayName: user.name,
-      status: user.status
-    }).catch(() => {});
-  }
-
-  // Save and broadcast
-  localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(usersData));
-  if (syncChannel) {
-    syncChannel.postMessage({ type: 'USERS_UPDATED', timestamp: Date.now() });
-  }
-  renderAdminUsersList();
-  showToast(`Player ${user.name || 'User'} marked ${user.status === 'active' ? '🟢 Active' : '🔴 Inactive'}`);
-}
-
-
-function handleAdminUserSearch(val) {
-  renderAdminUsersList();
-}
-
-function setEditUserAvatar(emoji) {
-  const input = document.getElementById('userEditAvatarInput');
-  const preview = document.getElementById('userEditAvatar');
-  if (input) input.value = emoji;
-  if (preview) preview.textContent = emoji;
-}
-
-function openEditUserModal(userId) {
-  const user = usersData.find(u => u.id === userId);
-  if (!user) return;
-
-  const modal = document.getElementById('adminUserModalOverlay');
-  if (document.getElementById('userEditId')) document.getElementById('userEditId').value = user.id;
-  if (document.getElementById('userEditAvatar')) document.getElementById('userEditAvatar').textContent = user.avatar || '⚡';
-  if (document.getElementById('userEditAvatarInput')) document.getElementById('userEditAvatarInput').value = user.avatar || '⚡';
-  if (document.getElementById('userEditNameDisplay')) document.getElementById('userEditNameDisplay').textContent = user.name || 'Player';
-  if (document.getElementById('userEditNameInput')) document.getElementById('userEditNameInput').value = user.name || 'Player';
-  if (document.getElementById('userEditHandleInput')) document.getElementById('userEditHandleInput').value = user.username || ('@' + (user.name || 'player').toLowerCase().replace(/\s+/g, ''));
-  if (document.getElementById('userEditEmailInput')) document.getElementById('userEditEmailInput').value = user.email || (user.id + '@novatasks.io');
-  if (document.getElementById('userEditRoleSelect')) document.getElementById('userEditRoleSelect').value = user.role || 'player';
-  if (document.getElementById('userEditLevelSelect')) document.getElementById('userEditLevelSelect').value = user.level || 'LVL 1 • NOVICE';
-  if (document.getElementById('userEditCoins')) document.getElementById('userEditCoins').value = user.coins || 0;
-  if (document.getElementById('userEditStars')) document.getElementById('userEditStars').value = user.stars || 0;
-  if (document.getElementById('userEditTickets')) document.getElementById('userEditTickets').value = user.tickets || 0;
-  if (document.getElementById('userEditEventTasks')) document.getElementById('userEditEventTasks').value = user.eventTasks || 0;
-  if (document.getElementById('userEditTotalTasks')) document.getElementById('userEditTotalTasks').value = user.totalTasks || 0;
-  if (document.getElementById('userEditStatus')) document.getElementById('userEditStatus').value = user.status || 'active';
-  if (document.getElementById('userEditIdDisplay')) document.getElementById('userEditIdDisplay').textContent = 'UID: ' + user.id;
-
-  if (modal) modal.style.display = 'flex';
-}
-
-function closeAdminUserModal() {
-  const modal = document.getElementById('adminUserModalOverlay');
-  if (modal) modal.style.display = 'none';
-}
-
-function handleUserModalBackdropClick(e) {
-  if (e.target && e.target.id === 'adminUserModalOverlay') {
-    closeAdminUserModal();
-  }
-}
-
-function openCreateUserModal() {
-  const modal = document.getElementById('adminAddUserModalOverlay');
-  if (document.getElementById('userAddNameInput')) document.getElementById('userAddNameInput').value = '';
-  if (document.getElementById('userAddAvatarInput')) document.getElementById('userAddAvatarInput').value = '🚀';
-  if (document.getElementById('userAddEventTasks')) document.getElementById('userAddEventTasks').value = '10';
-  if (document.getElementById('userAddTotalTasks')) document.getElementById('userAddTotalTasks').value = '20';
-  if (document.getElementById('userAddCoins')) document.getElementById('userAddCoins').value = '1000';
-  if (document.getElementById('userAddStars')) document.getElementById('userAddStars').value = '20';
-  if (document.getElementById('userAddTickets')) document.getElementById('userAddTickets').value = '50';
-  if (modal) modal.style.display = 'flex';
-}
-
-function closeCreateUserModal() {
-  const modal = document.getElementById('adminAddUserModalOverlay');
-  if (modal) modal.style.display = 'none';
-}
-
-function handleSaveCreateUser(e) {
-  if (e && e.preventDefault) e.preventDefault();
-  const name = document.getElementById('userAddNameInput')?.value?.trim() || 'New Player';
-  const avatar = document.getElementById('userAddAvatarInput')?.value?.trim() || '🚀';
-  const eventTasks = parseInt(document.getElementById('userAddEventTasks')?.value || '0', 10);
-  const totalTasks = parseInt(document.getElementById('userAddTotalTasks')?.value || '0', 10);
-  const coins = parseInt(document.getElementById('userAddCoins')?.value || '0', 10);
-  const stars = parseInt(document.getElementById('userAddStars')?.value || '0', 10);
-  const tickets = parseInt(document.getElementById('userAddTickets')?.value || '0', 10);
-  const level = document.getElementById('userAddLevelSelect')?.value || 'LVL 1 • NOVICE';
-  const role = document.getElementById('userAddRoleSelect')?.value || 'player';
-
-  const newId = 'usr_' + Date.now();
-  const newUser = {
-    id: newId,
-    name,
-    avatar,
-    username: '@' + name.toLowerCase().replace(/\s+/g, ''),
-    email: newId + '@novatasks.io',
-    level,
-    role,
-    coins,
-    stars,
-    tickets,
-    eventTasks,
-    totalTasks,
-    status: 'active',
-    joined: 'Today'
-  };
-
-  usersData.push(newUser);
-  saveUsersAndSync();
-  closeCreateUserModal();
-  showToast(`🚀 New contender "${name}" added to Leaderboard & Admin!`);
-}
-
-function handleSaveAdminUserForm(e) {
-  if (e && e.preventDefault) e.preventDefault();
-  const userId = document.getElementById('userEditId')?.value;
-  const name = document.getElementById('userEditNameInput')?.value || 'Player';
-  const handle = document.getElementById('userEditHandleInput')?.value || '';
-  const email = document.getElementById('userEditEmailInput')?.value || '';
-  const role = document.getElementById('userEditRoleSelect')?.value || 'player';
-  const level = document.getElementById('userEditLevelSelect')?.value || 'LVL 1 • NOVICE';
-  const coins = parseInt(document.getElementById('userEditCoins')?.value || '0', 10);
-  const stars = parseInt(document.getElementById('userEditStars')?.value || '0', 10);
-  const tickets = parseInt(document.getElementById('userEditTickets')?.value || '0', 10);
-  const eventTasks = parseInt(document.getElementById('userEditEventTasks')?.value || '0', 10);
-  const totalTasks = parseInt(document.getElementById('userEditTotalTasks')?.value || '0', 10);
-  const avatar = document.getElementById('userEditAvatarInput')?.value || document.getElementById('userEditAvatar')?.textContent || '⚡';
-  const status = document.getElementById('userEditStatus')?.value || 'active';
-
-  const user = usersData.find(u => u.id === userId);
-  if (user) {
-    user.name = name;
-    user.username = handle;
-    user.email = email;
-    user.role = role;
-    user.level = level;
-    user.coins = coins;
-    user.stars = stars;
-    user.tickets = tickets;
-    user.eventTasks = eventTasks;
-    user.totalTasks = totalTasks;
-    user.avatar = avatar;
-    user.status = status;
-
-    // Save directly to Firebase Cloud Firestore
-    const cloudSaver = (window.Firebase && window.Firebase.saveUserToCloud) || window.saveUserToCloud;
-    if (typeof cloudSaver === 'function') {
-      cloudSaver({
-        id: user.id,
-        uid: user.id,
-        displayName: user.name,
-        name: user.name,
-        avatar: user.avatar,
-        username: user.username,
-        email: user.email,
-        role: user.role,
-        level: user.level,
-        coins: user.coins,
-        stars: user.stars,
-        tickets: user.tickets,
-        eventTasks: user.eventTasks,
-        totalTasks: user.totalTasks,
-        status: user.status
-      }).catch(err => {
-        console.warn('Firebase sync warning:', err);
-      });
-    }
-
-    const currentUid = localStorage.getItem('player_uid');
-    const currentName = localStorage.getItem('player_username') || 'Player';
-    if (user.id === 'usr_1' || user.id === currentUid || user.name === currentName) {
-      localStorage.setItem('player_username', name);
-      localStorage.setItem('player_avatar', avatar);
-      localStorage.setItem('task_game_coins', coins.toString());
-      localStorage.setItem('user_coins', coins.toString());
-      localStorage.setItem('task_game_stars', stars.toString());
-      localStorage.setItem('user_stars', stars.toString());
-      localStorage.setItem('task_game_tickets', tickets.toString());
-      localStorage.setItem('user_tickets', tickets.toString());
-      localStorage.setItem('task_user_tickets', tickets.toString());
-      localStorage.setItem('task_game_event_tasks', eventTasks.toString());
-      localStorage.setItem('task_game_event_tasks_count', eventTasks.toString());
-      localStorage.setItem('task_game_total_tasks', totalTasks.toString());
-      localStorage.setItem('task_game_total_tasks_completed', totalTasks.toString());
-      localStorage.setItem('completed_tasks_count', totalTasks.toString());
-      if (typeof window.updateAllDomBalances === 'function') {
-        window.updateAllDomBalances(coins, stars, tickets);
-      }
-      updateAdminLiveDisplays();
-      updateProfileDisplays();
-      try {
-        if (syncChannel) {
-          syncChannel.postMessage({ type: 'PROFILE_UPDATED', name, avatar, timestamp: Date.now() });
-          syncChannel.postMessage({ type: 'BALANCES_UPDATED', coins, stars, tickets, timestamp: Date.now() });
-        }
-      } catch (e) {}
-    }
-
-    saveUsersAndSync();
-    closeAdminUserModal();
-    showToast(`Player "${user.name}" updated & synced with Leaderboard! ✓`, 3500);
-  }
-}
-
-async function handleResetUserFromModal() {
-  const userId = document.getElementById('userEditId')?.value;
-  if (!userId) return;
-  const user = usersData.find(u => u.id === userId);
-  const userName = user ? (user.name || user.username || userId) : userId;
-
-  const msg = `⚠️ RESET ALL USER DATA FOR: "${userName}" (${userId})?\n\nThis will permanently reset:\n• Coins: 0\n• Stars: 0\n• Tickets: 0\n• Levels, XP & Energy: Reset to initial default\n• Tasks & Event missions: 0 completed\n• Streaks, Claims, Rewards & Passes: Reset\n• Game activities & Records: Reset\n\nThis cannot be undone. Are you sure you want to proceed?`;
-  if (!confirm(msg)) return;
-
-  if (user) {
-    user.coins = 0;
-    user.stars = 0;
-    user.tickets = 0;
-    user.eventTasks = 0;
-    user.totalTasks = 0;
-    user.level = 'LVL 1 • NOVICE';
-    user.passLevel = 1;
-    user.xp = 0;
-    user.energy = 100;
-  }
-
-  const currentUid = localStorage.getItem('player_uid');
-  const currentName = localStorage.getItem('player_username') || 'Player';
-  if (userId === 'usr_1' || userId === currentUid || (user && user.name === currentName)) {
-    localStorage.setItem('task_game_coins', '0');
-    localStorage.setItem('user_coins', '0');
-    localStorage.setItem('task_game_stars', '0');
-    localStorage.setItem('user_stars', '0');
-    localStorage.setItem('task_game_tickets', '0');
-    localStorage.setItem('user_tickets', '0');
-    localStorage.setItem('task_user_tickets', '0');
-    localStorage.setItem('task_game_event_tasks', '0');
-    localStorage.setItem('task_game_event_tasks_count', '0');
-    localStorage.setItem('task_game_total_tasks', '0');
-    localStorage.setItem('task_game_total_tasks_completed', '0');
-    localStorage.setItem('completed_tasks_count', '0');
-    if (typeof window.updateAllDomBalances === 'function') {
-      window.updateAllDomBalances(0, 0, 0);
-    }
-    updateAdminLiveDisplays();
-    updateProfileDisplays();
-  }
-
-  // Cloud reset in Firebase
-  const resetFn = (window.Firebase && window.Firebase.resetUserAccountInCloud) || window.resetUserAccountInCloud;
-  if (typeof resetFn === 'function') {
-    try {
-      await resetFn(userId, user);
-    } catch (err) {
-      console.warn('[Profile Admin] Cloud reset error:', err);
-    }
-  }
-
-  saveUsersAndSync();
-  closeAdminUserModal();
-  renderAdminUsersList();
-  showToast(`🔄 All data for player "${userName}" has been reset to zero! ✓`, 3500);
-}
-
-async function handleDeleteUserFromModal() {
-  const userId = document.getElementById('userEditId')?.value;
-  if (!userId) return;
-  const user = usersData.find(u => u.id === userId);
-  const userName = user ? (user.name || user.username || userId) : userId;
-
-  const msg = `🗑️ PERMANENTLY DELETE PLAYER: "${userName}" (${userId})?\n\nThis will remove the player record and delete all associated data across Firebase collections.\n\nAre you sure you want to proceed?`;
-  if (!confirm(msg)) return;
-
-  const deletedCopy = user ? { ...user } : { id: userId, name: userName };
-  usersData = usersData.filter(u => u.id !== userId);
-
-  // Purge from Firebase Cloud Firestore
-  const cloudDeleter = (window.Firebase && window.Firebase.deleteUserFromCloud) || window.deleteUserFromCloud;
-  if (typeof cloudDeleter === 'function') {
-    try {
-      await cloudDeleter(userId, deletedCopy);
-    } catch (err) {
-      console.warn('[Profile Admin] Cloud delete error:', err);
-    }
-  }
-
-  saveUsersAndSync();
-  closeAdminUserModal();
-  renderAdminUsersList();
-  showToast(`🗑️ Player "${userName}" and all Firebase data deleted.`, 3500);
-}
-
-function quickAddUserCoins(userId, delta) {
-  const user = usersData.find(u => u.id === userId);
-  if (!user) return;
-  user.coins = Math.max(0, (user.coins || 0) + delta);
-
-  const currentName = localStorage.getItem('player_username') || 'NovaEarner';
-  if (user.id === 'usr_1' || user.name === currentName) {
-    localStorage.setItem('task_game_coins', user.coins.toString());
-    localStorage.setItem('user_coins', user.coins.toString());
-    localStorage.setItem('task_game_coins_alt', user.coins.toString());
-    updateAdminLiveDisplays();
-    try {
-      const bc = new BroadcastChannel('balance_sync_channel');
-      bc.postMessage({ type: 'BALANCE_UPDATED', coins: user.coins });
-      bc.close();
-    } catch(e) {}
-    if (syncChannel) {
-      try {
-        syncChannel.postMessage({ type: 'BALANCES_UPDATED', timestamp: Date.now() });
-      } catch(e) {}
-    }
-    window.dispatchEvent(new Event('balance:changed'));
-  }
-
-  saveUsersAndSync();
-  showToast(`${delta > 0 ? '+' : ''}${delta} coins given to ${user.name}`);
-}
-
-function quickAwardAllPlayers(amount) {
-  usersData.forEach(u => {
-    u.coins = (u.coins || 0) + amount;
-  });
-  let myCoins = parseInt(localStorage.getItem('task_game_coins') || '0', 10);
-  myCoins += amount;
-  localStorage.setItem('task_game_coins', myCoins.toString());
-  localStorage.setItem('user_coins', myCoins.toString());
-  localStorage.setItem('task_game_coins_alt', myCoins.toString());
-  try {
-    const bc = new BroadcastChannel('balance_sync_channel');
-    bc.postMessage({ type: 'BALANCE_UPDATED', coins: myCoins });
-    bc.close();
-  } catch(e) {}
-  if (syncChannel) {
-    try {
-      syncChannel.postMessage({ type: 'BALANCES_UPDATED', timestamp: Date.now() });
-    } catch(e) {}
-  }
-  window.dispatchEvent(new Event('balance:changed'));
+  autoLoginWithTelegram();
   updateAdminLiveDisplays();
+  if (typeof updatePlayerSessionUI === 'function') updatePlayerSessionUI();
+  if (typeof initReferralSystem === 'function') initReferralSystem();
+  if (typeof renderTgProfileUI === 'function') renderTgProfileUI();
+  if (typeof updateProfileOverviewStats === 'function') updateProfileOverviewStats();
+  if (typeof updateFutureTokensUI === 'function') updateFutureTokensUI();
+  if (typeof initTgPushSystem === 'function') initTgPushSystem();
+  if (typeof updateDailyStreakHeaderDisplays === 'function') updateDailyStreakHeaderDisplays();
+});
 
-  saveUsersAndSync();
-  showToast(`🎁 Granted +${amount.toLocaleString()} Coins to all players!`);
-}
-
-function saveUsersAndSync() {
-  localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(usersData));
-  localStorage.setItem(SYNC_FLAG_KEY, Date.now().toString());
-  try {
-    if (syncChannel) {
-      syncChannel.postMessage({ type: 'USERS_UPDATED', users: usersData, timestamp: Date.now() });
-      syncChannel.postMessage({ type: 'BALANCES_UPDATED', timestamp: Date.now() });
-    }
-  } catch (e) { }
-  window.dispatchEvent(new CustomEvent('task_game_users:updated', { detail: usersData }));
-  window.dispatchEvent(new Event('balance:changed'));
-  renderAdminUsersList();
-}
-
-// -----------------------------------------------------------------------------
-// 3. WITHDRAWAL REQUESTS SUBVIEW LOGIC
-// -----------------------------------------------------------------------------
-
-function filterAdminWithdrawals(filter, btn) {
-  currentWdFilter = filter;
-  document.querySelectorAll('.filter-pill').forEach(b => b.classList.remove('active'));
-  if (btn) btn.classList.add('active');
-  renderAdminWithdrawalsList();
-}
-
-function renderAdminWithdrawalsList() {
-  const container = document.getElementById('adminWithdrawalsList');
-  if (!container) return;
-
-  const isAdminAuth = sessionStorage.getItem('admin_authenticated') === 'true' || sessionStorage.getItem('task_admin_authenticated') === 'true';
-  if (!isAdminAuth) {
-    container.innerHTML = `
-      <div style="text-align: center; padding: 1.5rem 1rem; color: #f87171; font-size: 0.85rem; background: #0a1738; border-radius: 14px; border: 1px solid rgba(248, 113, 113, 0.35);">
-        🔒 Admin authentication required to view reward requests and user contact details.
-      </div>
-    `;
-    return;
-  }
-
-  const pending = withdrawalsData.filter(w => w.status === 'pending');
-  const approved = withdrawalsData.filter(w => w.status === 'approved');
-  const rejected = withdrawalsData.filter(w => w.status === 'rejected');
-
-  const cntAll = document.getElementById('cntWdAll');
-  const cntPend = document.getElementById('cntWdPending');
-  const cntApp = document.getElementById('cntWdApproved');
-  const cntRej = document.getElementById('cntWdRejected');
-
-  if (cntAll) cntAll.textContent = withdrawalsData.length.toString();
-  if (cntPend) cntPend.textContent = pending.length.toString();
-  if (cntApp) cntApp.textContent = approved.length.toString();
-  if (cntRej) cntRej.textContent = rejected.length.toString();
-
-  updateAdminCounters();
-
-  let list = [...withdrawalsData];
-  if (currentWdFilter !== 'all') {
-    list = list.filter(w => w.status === currentWdFilter);
-  }
-
-  if (list.length === 0) {
-    container.innerHTML = `
-      <div style="text-align: center; padding: 2rem 1rem; color: #94a3b8; font-size: 0.85rem; background: #0a1738; border-radius: 14px;">
-        <div style="font-size: 2rem; margin-bottom: 0.4rem;">💸</div>
-        No ${currentWdFilter === 'all' ? '' : currentWdFilter} requests found.
-      </div>
-    `;
-    return;
-  }
-
-  const deliveryOptions = ['Pending Review', 'Processing (Up to 10 Days)', 'Dispatched', 'Delivered ✅'];
-
-  container.innerHTML = list.map(wd => {
-    const isPending = wd.status === 'pending';
-    const isApproved = wd.status === 'approved';
-    const isRejected = wd.status === 'rejected';
-    const statusColor = isPending ? '#fbbf24' : isApproved ? '#34d399' : '#f87171';
-    const statusBg = isPending ? 'rgba(251, 191, 36, 0.15)' : isApproved ? 'rgba(52, 211, 153, 0.15)' : 'rgba(248, 113, 113, 0.15)';
-    const contactVal = wd.contactInfo || wd.userEmail || wd.userWhatsapp || wd.whatsapp || '';
-    const isEmailContact = wd.contactType === 'email' || String(contactVal).includes('@');
-    const curDeliveryStatus = wd.deliveryStatus || (isRejected ? 'Rejected' : (isApproved && (wd.deliveryLink || wd.link) ? 'Dispatched' : 'Processing (Up to 10 Days)'));
-
-    return `
-      <div class="admin-withdraw-card" data-wd-id="${escapeHtml(wd.id)}" style="background: #0a1738; border: 1px solid rgba(56, 189, 248, 0.18); border-radius: 12px; padding: 0.85rem; margin-bottom: 0.65rem;">
-        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
-          <div>
-            <div style="display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap;">
-              <span style="font-size: 1.1rem;">${wd.playerAvatar || '⚡'}</span>
-              <span style="font-size: 0.88rem; font-weight: 800; color: #ffffff;">${escapeHtml(wd.playerName || 'Player')}</span>
-              <span style="font-size: 0.62rem; color: #64748b; font-family: monospace;">(${escapeHtml(wd.id)})</span>
-            </div>
-            <div style="font-size: 0.72rem; color: #94a3b8; margin-top: 0.25rem;">
-              <b>${escapeHtml(wd.method || 'Voucher')}</b> • ${escapeHtml(wd.details || '')}
-            </div>
-            ${contactVal ? `
-              <div class="admin-wd-contact" style="font-size: 0.74rem; color: #38bdf8; font-weight: 800; margin-top: 0.25rem;">
-                ${isEmailContact ? '📧 Email:' : '📱 Mobile:'} <span style="color:#fff;">${escapeHtml(contactVal)}</span>
-              </div>
-            ` : ''}
-            <div style="font-size: 0.68rem; color: #fde68a; font-weight: 700; margin-top: 0.2rem;">
-              🚚 Delivery Status: <span class="admin-wd-delivery-text">${escapeHtml(curDeliveryStatus)}</span>
-            </div>
-            ${(wd.deliveryLink || wd.link) ? `<div style="margin-top: 3px;"><a href="${escapeHtml(wd.deliveryLink || wd.link)}" target="_blank" rel="noopener noreferrer" style="color: #34d399; font-size: 0.72rem; font-weight: 800; text-decoration: underline;">🔗 View Link</a></div>` : ''}
-            <div style="font-size: 0.65rem; color: #64748b; margin-top: 0.15rem;">${escapeHtml(wd.time || 'Recent')}</div>
-          </div>
-
-          <div style="text-align: right;">
-            <div style="font-size: 1.05rem; font-weight: 900; color: #38bdf8;">₹${Number(wd.amount || 0).toLocaleString()}</div>
-            <span style="font-size: 0.65rem; font-weight: 800; padding: 2px 7px; border-radius: 6px; background: ${statusBg}; color: ${statusColor}; text-transform: uppercase;">
-              ${escapeHtml(wd.status)}
-            </span>
-          </div>
-        </div>
-
-        ${isPending ? `
-          <div style="display: flex; gap: 0.5rem; margin-top: 0.6rem; padding-top: 0.5rem; border-top: 1px solid rgba(255, 255, 255, 0.05);">
-            <button class="btn-card-action success" style="flex: 1; padding: 6px;" onclick="approveWithdrawal('${escapeHtml(wd.id)}')">Approve &amp; Send Link ✓</button>
-            <button class="btn-card-action danger" style="padding: 6px 12px;" onclick="rejectWithdrawal('${escapeHtml(wd.id)}')">Reject ✕</button>
-          </div>
-        ` : ''}
-
-        ${!isRejected ? `
-          <div style="display: flex; gap: 0.45rem; align-items: center; margin-top: 0.55rem; padding-top: 0.45rem; border-top: 1px solid rgba(255, 255, 255, 0.05);">
-            <select id="wdDeliverySel_${escapeHtml(wd.id)}" class="admin-form-input" style="flex:1; font-size: 0.72rem; padding: 4px 6px;">
-              ${deliveryOptions.map(opt => `<option value="${escapeHtml(opt)}" ${curDeliveryStatus === opt ? 'selected' : ''}>${escapeHtml(opt)}</option>`).join('')}
-            </select>
-            <button type="button" class="btn-ctrl-code" style="font-size: 0.7rem; padding: 5px 10px;" onclick="updateWithdrawalDeliveryStatus('${escapeHtml(wd.id)}')">Update Delivery</button>
-          </div>
-        ` : ''}
-      </div>
-    `;
-  }).join('');
-}
-
-async function approveWithdrawal(wdId) {
-  const wd = withdrawalsData.find(w => w.id === wdId);
-  if (!wd) return;
-  if (wd.status && wd.status !== 'pending') {
-    showToast(`Request ${wd.id} is already ${wd.status}.`, 'error');
-    return;
-  }
-
-  const link = prompt(`🔗 Enter Voucher / Delivery Link for #${wd.id} (optional):\n(e.g. https://example.com/voucher/claim...)`, wd.deliveryLink || wd.link || '');
-  if (link === null) return;
-
-  const enteredCode = prompt(`🔐 Enter Admin Approval Security Code (1109) to confirm approval:`);
-  if (enteredCode === null) return;
-
-  if (enteredCode.trim() !== '1109') {
-    alert('❌ Invalid Approval Code! Must enter code 1109.');
-    showToast('Invalid security code! Approval cancelled.', 'error');
-    return;
-  }
-
-  let cleanLink = link.trim();
-  if (cleanLink && !cleanLink.startsWith('http://') && !cleanLink.startsWith('https://')) {
-    cleanLink = 'https://' + cleanLink;
-  }
-  const nextDeliveryStatus = cleanLink ? 'Dispatched' : 'Processing (Up to 10 Days)';
-
-  if (window.Firebase && typeof window.Firebase.processWithdrawalDecisionInCloud === 'function') {
-    const res = await window.Firebase.processWithdrawalDecisionInCloud({
-      wdId: wd.id,
-      decision: 'approved',
-      deliveryLink: cleanLink,
-      deliveryStatus: nextDeliveryStatus,
-      adminUser: localStorage.getItem('player_username') || 'admin'
-    });
-    if (!res.ok) {
-      showToast(res.error || 'Could not approve request.', 'error');
-      return;
-    }
-  } else {
-    const cloudWdSaver = (window.Firebase && window.Firebase.saveWithdrawalToCloud) || window.saveWithdrawalToCloud;
-    if (typeof cloudWdSaver === 'function') {
-      cloudWdSaver({ ...wd, status: 'approved', deliveryStatus: nextDeliveryStatus, approvedAt: Date.now(), deliveryLink: cleanLink, link: cleanLink }).catch(() => {});
-    }
-  }
-
-  wd.status = 'approved';
-  wd.deliveryStatus = nextDeliveryStatus;
-  wd.approvedAt = Date.now();
-  if (cleanLink) {
-    wd.deliveryLink = cleanLink;
-    wd.link = cleanLink;
-  }
-
-  saveWithdrawalsAndSync();
-  showToast(`✅ Request ${wd.id} Approved!`);
-}
-
-async function rejectWithdrawal(wdId) {
-  const wd = withdrawalsData.find(w => w.id === wdId);
-  if (!wd) return;
-  if (wd.status && wd.status !== 'pending') {
-    showToast(`Request ${wd.id} is already ${wd.status}.`, 'error');
-    return;
-  }
-  if (!confirm(`Reject withdrawal request ${wd.id} for ₹${Number(wd.amount || 0).toLocaleString()}?`)) return;
-
-  if (window.Firebase && typeof window.Firebase.processWithdrawalDecisionInCloud === 'function') {
-    const res = await window.Firebase.processWithdrawalDecisionInCloud({
-      wdId: wd.id,
-      decision: 'rejected',
-      deliveryStatus: 'Rejected',
-      adminUser: localStorage.getItem('player_username') || 'admin'
-    });
-    if (!res.ok) {
-      showToast(res.error || 'Could not reject request.', 'error');
-      return;
-    }
-  } else {
-    const cloudWdSaver = (window.Firebase && window.Firebase.saveWithdrawalToCloud) || window.saveWithdrawalToCloud;
-    if (typeof cloudWdSaver === 'function') {
-      cloudWdSaver({ ...wd, status: 'rejected', deliveryStatus: 'Rejected' }).catch(() => {});
-    }
-  }
-
-  wd.status = 'rejected';
-  wd.deliveryStatus = 'Rejected';
-  saveWithdrawalsAndSync();
-  showToast(`Request ${wd.id} Rejected.`);
-}
-
-async function updateWithdrawalDeliveryStatus(wdId) {
-  const isAdminAuth = sessionStorage.getItem('admin_authenticated') === 'true' || sessionStorage.getItem('task_admin_authenticated') === 'true';
-  if (!isAdminAuth) {
-    showToast('Admin authentication required.', 'error');
-    return;
-  }
-  const wd = withdrawalsData.find(w => w.id === wdId);
-  if (!wd) return;
-  const sel = document.getElementById(`wdDeliverySel_${wdId}`);
-  const nextStatus = (sel && sel.value) || 'Processing (Up to 10 Days)';
-  wd.deliveryStatus = nextStatus;
-  wd.deliveryUpdatedAt = Date.now();
-  wd.updatedAt = Date.now();
-  saveWithdrawalsAndSync();
-  showToast(`🚚 Delivery status updated to "${nextStatus}"`);
-  if (window.Firebase && typeof window.Firebase.updateWithdrawalDeliveryInCloud === 'function') {
-    await window.Firebase.updateWithdrawalDeliveryInCloud({
-      wdId: wd.id,
-      deliveryStatus: nextStatus,
-      adminUser: localStorage.getItem('player_username') || 'admin'
-    });
-  }
-}
-window.updateWithdrawalDeliveryStatus = updateWithdrawalDeliveryStatus;
-
-function saveWithdrawalsAndSync() {
-  localStorage.setItem(WITHDRAW_STORAGE_KEY, JSON.stringify(withdrawalsData));
-  localStorage.setItem(SYNC_FLAG_KEY, Date.now().toString());
-  if (syncChannel) {
-    syncChannel.postMessage({ type: 'WITHDRAWALS_UPDATED', timestamp: Date.now() });
-  }
-  renderAdminWithdrawalsList();
-}
-
-// -----------------------------------------------------------------------------
-// 4. LEADERBOARD EVENT SUBVIEW LOGIC
-// -----------------------------------------------------------------------------
-
-function renderAdminEventSection() {
-  startAdminEventTimer();
-  renderAdminEventContenders();
-  renderProfileSessionHistory();
-}
-
-const SESSIONS_STORAGE_KEY = 'task_game_leaderboard_sessions';
-const UNIFIED_EVENT_KEY = 'task_game_leaderboard_event';
-
-function getLeaderboardEventState() {
-  const now = Date.now();
-
-  // Purge legacy key
-  try {
-    if (localStorage.getItem('task_leaderboard_event_v1')) {
-      localStorage.removeItem('task_leaderboard_event_v1');
-    }
-  } catch (e) {}
-
-  let data = null;
-  try {
-    const raw = localStorage.getItem(UNIFIED_EVENT_KEY);
-    if (raw) data = JSON.parse(raw);
-  } catch (e) {}
-
-  // If an event has finished, respect it
-  if (data && data.status === 'finished') {
-    return data;
-  }
-
-  // If active manual override is still running
-  if (data && data.isManualOverride && now < data.endTime && data.status === 'active') {
-    return data;
-  }
-
-  // Deterministic Universal Global 3-Month Season (Identical to Rank and Admin Event pages)
-  const GLOBAL_EPOCH_ANCHOR = Date.UTC(2026, 9, 1, 0, 0, 0); // Oct 1, 2026 UTC
-  const THREE_MONTHS_HOURS = 2160;
-  const THREE_MONTHS_DAYS = 90;
-  const THREE_MONTHS_MS = THREE_MONTHS_HOURS * 60 * 60 * 1000;
-
-  const elapsed = Math.max(0, now - GLOBAL_EPOCH_ANCHOR);
-  const seasonIndex = Math.floor(elapsed / THREE_MONTHS_MS);
-  const seasonNumber = seasonIndex + 1;
-  const startTime = GLOBAL_EPOCH_ANCHOR + (seasonIndex * THREE_MONTHS_MS);
-  const endTime = startTime + THREE_MONTHS_MS;
-
-  data = {
-    id: `global_season_${seasonNumber}`,
-    seasonNumber: seasonNumber,
-    name: `Season ${seasonNumber}: 3-Month Championship`,
-    startTime: startTime,
-    endTime: endTime,
-    durationHours: THREE_MONTHS_HOURS,
-    durationDays: THREE_MONTHS_DAYS,
-    status: 'active',
-    isGlobal: true
-  };
-
-  try {
-    localStorage.setItem(UNIFIED_EVENT_KEY, JSON.stringify(data));
-  } catch(e) {}
-
-  return data;
-}
-
-function startAdminEventTimer() {
-  if (adminEventInterval) clearInterval(adminEventInterval);
-
-  function tick() {
-    const evt = getLeaderboardEventState();
-    const now = Date.now();
-    const diff = Math.max(0, (evt.endTime || 0) - now);
-
-    const totalSec = Math.floor(diff / 1000);
-    const days = Math.floor(totalSec / 86400);
-    const hours = Math.floor((totalSec % 86400) / 3600);
-    const mins = Math.floor((totalSec % 3600) / 60);
-    const secs = totalSec % 60;
-
-    const elDays = document.getElementById('adminTimerDays');
-    const elHours = document.getElementById('adminTimerHours');
-    const elMins = document.getElementById('adminTimerMins');
-    const elSecs = document.getElementById('adminTimerSecs');
-
-    if (elDays) elDays.textContent = String(days).padStart(2, '0');
-    if (elHours) elHours.textContent = String(hours).padStart(2, '0');
-    if (elMins) elMins.textContent = String(mins).padStart(2, '0');
-    if (elSecs) elSecs.textContent = String(secs).padStart(2, '0');
-
-    const elBadge = document.getElementById('profileEventSeasonBadge');
-    if (elBadge && evt.name) {
-      elBadge.textContent = `🏆 ${evt.name.toUpperCase()}`;
-    }
-    const elDates = document.getElementById('adminEventDatesInfo');
-    if (elDates && evt.startTime && evt.endTime) {
-      const startStr = new Date(evt.startTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-      const endStr = new Date(evt.endTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-      elDates.textContent = `Active Season: ${startStr} – ${endStr} (90 Days Global Championship)`;
-    }
-  }
-
-  tick();
-  adminEventInterval = setInterval(tick, 1000);
-}
-
-function renderAdminEventContenders() {
-  const container = document.getElementById('adminEventPlayersList');
-  if (!container) return;
-
-  const contenders = [...usersData].sort((a, b) => (Number(b.eventTasks || 0)) - (Number(a.eventTasks || 0)));
-
-  if (contenders.length === 0) {
-    container.innerHTML = `<div style="text-align: center; padding: 1.5rem; color: #94a3b8; font-size: 0.8rem;">No contenders registered yet.</div>`;
-    return;
-  }
-
-  container.innerHTML = contenders.map((u, i) => `
-    <div style="display: flex; align-items: center; justify-content: space-between; background: #060e24; border: 1px solid rgba(250, 204, 21, 0.2); border-radius: 10px; padding: 0.5rem 0.75rem; margin-bottom: 0.4rem;">
-      <div style="display: flex; align-items: center; gap: 0.5rem;">
-        <span style="font-weight: 900; color: ${i === 0 ? '#facc15' : i === 1 ? '#94a3b8' : i === 2 ? '#d97706' : '#64748b'}; width: 20px;">#${i + 1}</span>
-        <span>${u.avatar || '⚡'}</span>
-        <span style="font-size: 0.82rem; font-weight: 800; color: #ffffff;">${escapeHtml(u.name || 'User ' + (i + 1))}</span>
-      </div>
-      <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 2px;">
-        <span style="font-size: 0.75rem; font-weight: 800; color: #facc15;">${Number(u.eventTasks || 0)} Event Tasks</span>
-        <span style="font-size: 0.68rem; color: #94a3b8;">${Number(u.totalTasks || 0)} Total Tasks</span>
-      </div>
-    </div>
-  `).join('');
-}
-
-function adminResetLeaderboardSeason() {
-  if (!confirm('Restart the 3-Month Global Championship Event Season?')) return;
-  const THREE_MONTHS_HOURS = 2160;
-  const THREE_MONTHS_DAYS = 90;
-  const THREE_MONTHS_MS = THREE_MONTHS_HOURS * 60 * 60 * 1000;
-  const current = getLeaderboardEventState();
-  // Season restart: season number does NOT change
-  const nextSeasonNum = current.seasonNumber || 1;
-  const now = Date.now();
-  const nextSeason = {
-    id: `global_season_${nextSeasonNum}`,
-    seasonNumber: nextSeasonNum,
-    name: `Season ${nextSeasonNum}: 3-Month Championship`,
-    startTime: now,
-    endTime: now + THREE_MONTHS_MS,
-    durationHours: THREE_MONTHS_HOURS,
-    durationDays: THREE_MONTHS_DAYS,
-    status: 'active',
-    isGlobal: true,
-    isManualOverride: true
-  };
-
-  localStorage.setItem(UNIFIED_EVENT_KEY, JSON.stringify(nextSeason));
-  localStorage.removeItem('task_leaderboard_event_v1');
-  localStorage.setItem(SYNC_FLAG_KEY, now.toString());
-
-  try {
-    if (window.Firebase && typeof window.Firebase.saveGlobalLeaderboardEventToCloud === 'function') {
-      window.Firebase.saveGlobalLeaderboardEventToCloud(nextSeason);
-    }
-    const bc = new BroadcastChannel(SYNC_CHANNEL_NAME);
-    bc.postMessage({ type: 'EVENT_RESTART', event: nextSeason, timestamp: now });
-    bc.close();
-  } catch(e) {}
-
-  // Reset event tasks for users
-  usersData.forEach(u => {
-    u.eventTasks = 0;
-  });
-  saveUsersAndSync();
-
-  startAdminEventTimer();
-  renderAdminEventContenders();
-  showToast(`🏆 Season ${nextSeason.seasonNumber} started! Fresh 90 days countdown.`);
-}
-
-
-// ============================================================================
-// HELP & SUPPORT PAGE NAVIGATION
-// ============================================================================
 function openHelpModal() {
   if (typeof ProfileAudio !== 'undefined' && ProfileAudio && typeof ProfileAudio.playTabSwitch === 'function') {
     try { ProfileAudio.playTabSwitch(); } catch (e) {}
@@ -3570,7 +262,6 @@ function getStoredFeedbacks() {
 
 function saveStoredFeedbacks(list) {
   localStorage.setItem(FEEDBACK_STORAGE_KEY, JSON.stringify(list));
-  renderAdminFeedbackList();
 }
 
 function openFeedbackModal() {
@@ -3654,6 +345,10 @@ function submitPlayerFeedback(e) {
   list.unshift(newFeedback);
   saveStoredFeedbacks(list);
 
+  if (window.Firebase && typeof window.Firebase.saveFeedbackToCloud === 'function') {
+    window.Firebase.saveFeedbackToCloud(newFeedback).catch(() => {});
+  }
+
   if (successBox) successBox.style.display = 'block';
   msgInput.value = '';
   showToast('🎉 Feedback sent to Admin successfully! Thank you. ✓');
@@ -3666,389 +361,13 @@ function submitPlayerFeedback(e) {
   }, 1400);
 }
 
-function renderAdminFeedbackList() {
-  const container = document.getElementById('adminFeedbackListContainer');
-  const countEl = document.getElementById('adminFeedbackCount');
-  if (!container) return;
 
-  const list = getStoredFeedbacks();
-  if (countEl) countEl.textContent = list.length.toString();
-
-  if (list.length === 0) {
-    container.innerHTML = '<div style="text-align: center; padding: 1.5rem; color: #94a3b8; font-size: 0.78rem; background: rgba(15, 23, 42, 0.5); border-radius: 8px;">No player feedback messages yet.</div>';
-    return;
-  }
-
-  container.innerHTML = list.map(item => {
-    const starString = '⭐'.repeat(item.rating || 5);
-    const dateFormatted = new Date(item.date).toLocaleDateString(undefined, {
-      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-    });
-
-    return `
-      <div class="admin-feedback-card">
-        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <span style="font-size: 1.3rem;">${item.avatar || '👤'}</span>
-            <div>
-              <div style="font-size: 0.82rem; font-weight: 800; color: #ffffff;">${escapeHtml(item.name || 'Anonymous')}</div>
-              <div style="font-size: 0.68rem; color: #94a3b8; display: flex; gap: 6px; align-items: center;">
-                <span style="color: #fbbf24; font-weight: 700;">${starString}</span>
-                <span>&bull;</span>
-                <span style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; padding: 1px 6px; border-radius: 4px; font-weight: 700;">${escapeHtml(item.category || 'General')}</span>
-                <span>&bull;</span>
-                <span>${dateFormatted}</span>
-              </div>
-            </div>
-          </div>
-          <button type="button" onclick="deleteFeedbackMessage('${item.id}')" title="Delete message" style="background: rgba(239, 68, 68, 0.18); border: 1px solid rgba(239, 68, 68, 0.45); color: #f87171; border-radius: 6px; padding: 3px 8px; font-size: 0.72rem; cursor: pointer; display: flex; align-items: center; gap: 3px;">
-            <span>🗑️ Delete</span>
-          </button>
-        </div>
-        <div style="font-size: 0.76rem; color: #cbd5e1; margin-top: 6px; line-height: 1.45; background: rgba(6, 15, 42, 0.6); padding: 7px 9px; border-radius: 6px; border-left: 2px solid #fbbf24;">
-          ${escapeHtml(item.message || '')}
-        </div>
-      </div>
-    `;
-  }).join('');
-}
-
-function deleteFeedbackMessage(id) {
-  if (!confirm('Are you sure you want to delete this feedback message?')) return;
-  let list = getStoredFeedbacks();
-  list = list.filter(f => f.id !== id);
-  saveStoredFeedbacks(list);
-  showToast('Feedback message deleted 🗑️');
-}
-
-function clearAllAdminFeedbacks() {
-  if (!confirm('Are you sure you want to delete ALL feedback messages?')) return;
-  saveStoredFeedbacks([]);
-  showToast('All feedback messages cleared 🗑️');
-}
-
+window.submitPlayerFeedback = submitPlayerFeedback;
 window.openFeedbackModal = openFeedbackModal;
 window.closeFeedbackModal = closeFeedbackModal;
 window.handleFeedbackModalBackdropClick = handleFeedbackModalBackdropClick;
 window.setFeedbackRating = setFeedbackRating;
-window.submitPlayerFeedback = submitPlayerFeedback;
-window.renderAdminFeedbackList = renderAdminFeedbackList;
-window.deleteFeedbackMessage = deleteFeedbackMessage;
-window.clearAllAdminFeedbacks = clearAllAdminFeedbacks;
 
-const HTML_ESC_MAP = {
-  '&': '&amp;',
-  '<': '&lt;',
-  '>': '&gt;',
-  '"': '&quot;',
-  "'": '&#039;'
-};
-const HTML_ESC_REGEX = /[&<>"']/g;
-
-function escapeHtml(str) {
-  if (typeof str !== 'string') return str ? String(str) : '';
-  return str.replace(HTML_ESC_REGEX, ch => HTML_ESC_MAP[ch]);
-}
-
-// Expose functions to global window scope for inline onclicks
-window.openRoadmapModal = function() {
-  window.location.href = '../leaderboard/index.html?action=roadmap';
-};
-window.switchProfileTab = switchProfileTab;
-window.handleAdminLogin = handleAdminLogin;
-window.exitAdminToProfile = exitAdminToProfile;
-window.adminLogout = adminLogout;
-window.switchAdminSubView = switchAdminSubView;
-window.openCreateTaskModal = openCreateTaskModal;
-window.openEditTaskModal = openEditTaskModal;
-window.closeAdminTaskModal = closeAdminTaskModal;
-window.handleTaskModalBackdropClick = handleTaskModalBackdropClick;
-window.generateRandomTaskCode = generateRandomTaskCode;
-window.handleSaveAdminTaskForm = handleSaveAdminTaskForm;
-window.toggleTaskActive = toggleTaskActive;
-window.deleteAdminTask = deleteAdminTask;
-window.resetPlayerCooldowns = resetPlayerCooldowns;
-window.handleAdminTaskSearch = handleAdminTaskSearch;
-window.setEditUserAvatar = setEditUserAvatar;
-window.openCreateUserModal = openCreateUserModal;
-window.closeCreateUserModal = closeCreateUserModal;
-window.handleSaveCreateUser = handleSaveCreateUser;
-window.openEditUserModal = openEditUserModal;
-window.closeAdminUserModal = closeAdminUserModal;
-window.handleUserModalBackdropClick = handleUserModalBackdropClick;
-window.handleSaveAdminUserForm = handleSaveAdminUserForm;
-window.handleResetUserFromModal = handleResetUserFromModal;
-window.handleDeleteUserFromModal = handleDeleteUserFromModal;
-window.toggleUserActiveStatus = toggleUserActiveStatus;
-window.quickAddUserCoins = quickAddUserCoins;
-window.quickAwardAllPlayers = quickAwardAllPlayers;
-window.handleAdminUserSearch = handleAdminUserSearch;
-window.filterAdminWithdrawals = filterAdminWithdrawals;
-window.approveWithdrawal = approveWithdrawal;
-window.rejectWithdrawal = rejectWithdrawal;
-window.adminResetLeaderboardSeason = adminResetLeaderboardSeason;
-
-
-/**
- * Log action with timestamp into the Admin Log Console
- */
-function logAdminAction(message) {
-  const logBox = document.getElementById('adminLogBox');
-  if (!logBox) return;
-
-  const now = new Date();
-  const timeStr = now.toTimeString().split(' ')[0];
-  logBox.innerHTML = `<div>[${timeStr}] ${message}</div>` + logBox.innerHTML;
-}
-
-/**
- * Refresh all live currency and game indicators on the profile & admin dashboard
- */
-function updateAdminLiveDisplays() {
-  const currentCoins = parseInt(localStorage.getItem('task_game_coins') || '0', 10);
-  const currentStars = parseInt(localStorage.getItem('task_game_stars') || '0', 10);
-
-  // Update top header and admin coins & stars
-  const headerCoins = document.getElementById('profileCoinsDisplay');
-  if (headerCoins) headerCoins.textContent = currentCoins.toLocaleString();
-
-  const headerStars = document.getElementById('profileStarsDisplay');
-  if (headerStars) headerStars.textContent = currentStars.toLocaleString();
-
-  // Telegram Stars Rating - Suppressed per user request
-  const ratingLevelEl = document.getElementById('tgProfileRatingLevel');
-  const ratingSubEl = document.getElementById('tgProfileRatingSub');
-  if (ratingLevelEl) ratingLevelEl.style.display = 'none';
-  if (ratingSubEl) ratingSubEl.style.display = 'none';
-
-  const userAvatar = document.querySelector('.user-avatar');
-  if (userAvatar) userAvatar.textContent = localStorage.getItem('player_avatar') || '👤';
-
-  const currentProfileUsername = localStorage.getItem('player_username') || localStorage.getItem('user_profile_name') || 'Player';
-  const userName = document.querySelector('.user-name');
-  if (userName) userName.textContent = currentProfileUsername;
-  const headerUserName = document.getElementById('headerUserName');
-  if (headerUserName) headerUserName.textContent = currentProfileUsername;
-  const headerUserAvatar = document.getElementById('headerUserAvatar');
-  if (headerUserAvatar) headerUserAvatar.textContent = localStorage.getItem('player_avatar') || '👤';
-
-  const adminCoins = document.getElementById('adminLiveCoins');
-  if (adminCoins) adminCoins.textContent = `${currentCoins.toLocaleString()} 🪙`;
-
-  const adminStars = document.getElementById('adminLiveStars');
-  if (adminStars) adminStars.textContent = `${currentStars.toLocaleString()} ⭐`;
-
-
-}
-
-// -----------------------------------------------------------------------------
-// Admin Currency Manipulation Functions
-// -----------------------------------------------------------------------------
-
-/**
- * Add specified amount of coins from input field
- */
-function adminAddCoins() {
-  const input = document.getElementById('inputCoinsAdjust');
-  const amount = parseInt(input ? input.value : '0', 10);
-
-  if (isNaN(amount) || amount === 0) {
-    alert('Please enter a valid coin amount to add.');
-    return;
-  }
-
-  let coins = parseInt(localStorage.getItem('task_game_coins') || localStorage.getItem('user_coins') || '0', 10);
-  coins = Math.max(0, coins + amount);
-  localStorage.setItem('task_game_coins', coins.toString());
-  localStorage.setItem('user_coins', coins.toString());
-  localStorage.setItem('task_game_coins_alt', coins.toString());
-  try {
-    const bc = new BroadcastChannel('balance_sync_channel');
-    bc.postMessage({ type: 'BALANCE_UPDATED', coins });
-    bc.close();
-  } catch(e) {}
-  window.dispatchEvent(new Event('balance:changed'));
-
-  if (input) input.value = '';
-  updateAdminLiveDisplays();
-  logAdminAction(`Added ${amount.toLocaleString()} coins. New balance: ${coins.toLocaleString()} 🪙`);
-}
-
-/**
- * Set player coins directly to a specific value
- */
-function adminSetCoins() {
-  const input = document.getElementById('inputCoinsAdjust');
-  const amount = parseInt(input ? input.value : '0', 10);
-
-  if (isNaN(amount) || amount < 0) {
-    alert('Please enter a valid non-negative coin amount.');
-    return;
-  }
-
-  localStorage.setItem('task_game_coins', amount.toString());
-  localStorage.setItem('user_coins', amount.toString());
-  localStorage.setItem('task_game_coins_alt', amount.toString());
-  try {
-    const bc = new BroadcastChannel('balance_sync_channel');
-    bc.postMessage({ type: 'BALANCE_UPDATED', coins: amount });
-    bc.close();
-  } catch(e) {}
-  window.dispatchEvent(new Event('balance:changed'));
-  if (input) input.value = '';
-  updateAdminLiveDisplays();
-  logAdminAction(`Coins set directly to: ${amount.toLocaleString()} 🪙`);
-}
-
-/**
- * Quick preset coin adjustments (+500, +2000, +10000, -500)
- */
-function adminQuickCoins(amount) {
-  let coins = parseInt(localStorage.getItem('task_game_coins') || localStorage.getItem('user_coins') || '0', 10);
-  coins = Math.max(0, coins + amount);
-  localStorage.setItem('task_game_coins', coins.toString());
-  localStorage.setItem('user_coins', coins.toString());
-  localStorage.setItem('task_game_coins_alt', coins.toString());
-  try {
-    const bc = new BroadcastChannel('balance_sync_channel');
-    bc.postMessage({ type: 'BALANCE_UPDATED', coins });
-    bc.close();
-  } catch(e) {}
-  window.dispatchEvent(new Event('balance:changed'));
-
-  updateAdminLiveDisplays();
-  const sign = amount > 0 ? `+${amount.toLocaleString()}` : `${amount.toLocaleString()}`;
-  logAdminAction(`Quick adjustment: ${sign} coins. New balance: ${coins.toLocaleString()} 🪙`);
-}
-
-/**
- * Add stars to player profile
- */
-function adminAddStars() {
-  const input = document.getElementById('inputStarsAdjust');
-  const amount = parseInt(input ? input.value : '0', 10);
-
-  if (isNaN(amount) || amount === 0) {
-    alert('Please enter a valid star amount.');
-    return;
-  }
-
-  let stars = parseInt(localStorage.getItem('task_game_stars') || localStorage.getItem('user_stars') || '0', 10);
-  stars = Math.max(0, stars + amount);
-  localStorage.setItem('task_game_stars', stars.toString());
-  localStorage.setItem('user_stars', stars.toString());
-  try {
-    const bc = new BroadcastChannel('balance_sync_channel');
-    bc.postMessage({ type: 'BALANCE_UPDATED', stars });
-    bc.close();
-  } catch(e) {}
-  window.dispatchEvent(new Event('balance:changed'));
-
-  if (input) input.value = '';
-  updateAdminLiveDisplays();
-  logAdminAction(`Added ${amount} Stars. Total stars: ${stars} ⭐`);
-}
-
-// -----------------------------------------------------------------------------
-// Real-time Cloud Data Synchronization for Admin Dashboard
-// -----------------------------------------------------------------------------
-
-function initAdminCloudListeners() {
-  // 1. Real-time Users Listener from Firestore (users collection)
-  const listenUsers = (window.Firebase && window.Firebase.listenToCloudUsers) || window.listenToCloudUsers;
-  if (typeof listenUsers === 'function') {
-    listenUsers((cloudUsers) => {
-      if (Array.isArray(cloudUsers) && cloudUsers.length > 0) {
-        usersData = cloudUsers.map(u => ({
-          id: u.id || u.uid,
-          name: u.displayName || u.name || 'Player',
-          email: u.email || '',
-          avatar: u.avatar || '⚡',
-          level: u.level || 'LVL 1 • NOVICE',
-          coins: typeof u.coins === 'number' ? u.coins : 0,
-          stars: typeof u.stars === 'number' ? u.stars : 0,
-          totalTasks: u.tasksCompleted || u.totalTasks || 0,
-          adsWatched: u.adsWatched || 0,
-          status: u.status || 'active',
-          joined: u.createdAt ? new Date(u.createdAt).toLocaleDateString() : 'Active',
-          lastActive: u.lastActive ? new Date(u.lastActive).toLocaleDateString() : 'Recently'
-        }));
-        localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(usersData));
-        renderAdminUsersList();
-      }
-    });
-  }
-
-  // 2. Real-time Withdrawals / Requests Listener from Firestore (withdrawals collection)
-  const listenWds = (window.Firebase && window.Firebase.listenToCloudWithdrawals) || window.listenToCloudWithdrawals;
-  if (typeof listenWds === 'function') {
-    listenWds((cloudWds) => {
-      if (Array.isArray(cloudWds)) {
-        withdrawalsData = cloudWds.map(w => ({
-          ...w,
-          id: w.id,
-          userId: w.userId,
-          playerName: w.playerName || w.userName || 'Player',
-          playerAvatar: w.playerAvatar || '⚡',
-          amount: w.amount !== undefined ? w.amount : (w.rsAmount !== undefined ? w.rsAmount : 100),
-          starCost: w.starCost !== undefined ? w.starCost : (w.stars || 0),
-          method: w.method || w.title || 'Amazon Voucher',
-          contactInfo: w.contactInfo || w.userEmail || w.userWhatsapp || w.whatsapp || '',
-          contactType: w.contactType || (String(w.contactInfo || w.userEmail || '').includes('@') ? 'email' : 'mobile'),
-          details: w.details || w.contactInfo || w.userWhatsapp || w.mobile || 'Voucher Claim',
-          deliveryLink: w.deliveryLink || w.link || '',
-          deliveryStatus: w.deliveryStatus || (w.status === 'rejected' ? 'Rejected' : 'Processing (Up to 10 Days)'),
-          status: w.status || 'pending',
-          createdAt: w.createdAt || w.timestamp || Date.now(),
-          time: w.time || (w.createdAt ? new Date(w.createdAt).toLocaleString() : 'Recently')
-        }));
-        localStorage.setItem(WITHDRAW_STORAGE_KEY, JSON.stringify(withdrawalsData));
-        renderAdminWithdrawalsList();
-      }
-    });
-  }
-}
-window.initAdminCloudListeners = initAdminCloudListeners;
-
-// -----------------------------------------------------------------------------
-// DOM Ready Lifecycle Initialization
-// -----------------------------------------------------------------------------
-window.addEventListener('firebase:ready', () => { initAdminCloudListeners(); });
-document.addEventListener('DOMContentLoaded', () => {
-  initAdminCloudListeners();
-  // Automatic Telegram login process
-  autoLoginWithTelegram();
-
-  // Sync live coin count on header
-  updateAdminLiveDisplays();
-
-  // Initialize tabs: support ?tab=admin or ?open=admin to open Admin view directly with compulsory lock
-  const urlParams = new URLSearchParams(window.location.search);
-  const targetTab = (urlParams.get('tab') || urlParams.get('open') || '').toLowerCase();
-  if (targetTab === 'admin') {
-    openAdminCompulsoryLock();
-  } else {
-    switchProfileTab('profile');
-  }
-
-  // Initialize player session & authentication indicator
-  updatePlayerSessionUI();
-
-  // Initialize the Invite Friends & Referral System
-  initReferralSystem();
-
-  // Initialize TG profile stats and push system
-  if (typeof renderTgProfileUI === 'function') renderTgProfileUI();
-  if (typeof updateProfileOverviewStats === 'function') updateProfileOverviewStats();
-  if (typeof updateFutureTokensUI === 'function') updateFutureTokensUI();
-  if (typeof initTgPushSystem === 'function') initTgPushSystem();
-
-  // If already authenticated in this session, show unlocked indicator
-  const adminStatusTag = document.getElementById('adminStatusTag');
-  if (adminStatusTag && isAdminLoggedIn()) {
-    adminStatusTag.textContent = '🔓';
-  }
-});
 
 // =============================================================================
 // INVITE FRIENDS & REFERRAL SYSTEM LOGIC
@@ -4179,11 +498,13 @@ function autoLoginWithTelegram() {
       }
     }
 
-    // Default seamless auto-login
+    // Keep session ready without overriding empty/fresh username (lets first-time unique name popup run)
     localStorage.setItem('player_logged_in', 'true');
     const existingName = localStorage.getItem('player_username');
-    if (!existingName || existingName === 'NovaEarner' || existingName === 'Player') {
-      localStorage.setItem('player_username', 'Task Earner');
+    if (existingName === 'NovaEarner' || existingName === 'Task Earner') {
+      if (localStorage.getItem('player_username_confirmed') !== 'true') {
+        localStorage.removeItem('player_username');
+      }
     }
   } catch (e) {
     localStorage.setItem('player_logged_in', 'true');
@@ -4192,7 +513,7 @@ function autoLoginWithTelegram() {
 
 function getCurrentPlayer() {
   const saved = localStorage.getItem('player_username');
-  const username = (saved && saved !== 'NovaEarner' && saved !== 'Player') ? saved : 'Task Earner';
+  const username = (saved && saved !== 'NovaEarner' && saved !== 'Task Earner') ? saved : 'Player';
   const avatar = localStorage.getItem('player_avatar') || '⚡';
   const id = localStorage.getItem('player_id') || 'usr_1';
   return { id, username, avatar, isLoggedIn: true };
@@ -4893,15 +1214,16 @@ function populateSignUpAvatarOptions() {
   const row = document.getElementById('tgSignUpAvatarRow');
   if (!row || row.children.length > 0) return;
 
-  const avatars = ["⚡", "👑", "💎", "🚀", "🦊", "🦁", "🎯", "🤖"];
+  const avatars = ['avatar-1.png', 'avatar-2.png', 'avatar-3.png', 'avatar-4.png', 'avatar-5.png', 'avatar-6.png', 'avatar-7.png', 'avatar-8.png'];
   avatars.forEach((av, idx) => {
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'tg-test-chip' + (idx === 0 ? ' active' : '');
-    btn.style.fontSize = '1.2rem';
-    btn.textContent = av;
+    btn.className = 'avatar-3d-option' + (idx === 0 ? ' active' : '');
+    btn.setAttribute('data-avatar', av);
+    btn.title = av.replace('.png', '');
+    btn.innerHTML = `<img src="../../assets/avatars/${av}" alt="Avatar ${idx + 1}" class="sticker-3d-avatar-img" style="width: 42px; height: 42px; object-fit: contain; display: block; pointer-events: none;" />`;
     btn.onclick = () => {
-      row.querySelectorAll('.tg-test-chip').forEach(b => b.classList.remove('active'));
+      row.querySelectorAll('.avatar-3d-option').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
     };
     row.appendChild(btn);
@@ -4920,8 +1242,8 @@ function handleCompleteTgSignUp() {
     return;
   }
 
-  const activeAvBtn = document.querySelector('#tgSignUpAvatarRow .tg-test-chip.active');
-  const avatar = activeAvBtn ? activeAvBtn.textContent.trim() : '⚡';
+  const activeAvBtn = document.querySelector('#tgSignUpAvatarRow .avatar-3d-option.active, #tgSignUpAvatarRow .tg-test-chip.active');
+  const avatar = activeAvBtn ? (activeAvBtn.getAttribute('data-avatar') || 'avatar-1.png') : 'avatar-1.png';
 
   completeTgAuthorization({
     phone: currentTgAuth.phone,
@@ -5289,10 +1611,157 @@ function initReferralSystem() {
   renderReferralStatsAndList();
 }
 
+const REFERRAL_MILESTONES_KEY = 'referral_star_milestones_claimed';
+const REFERRAL_STAR_MILESTONES = [
+  { id: 'ref_ms_1', friendsRequired: 1, rewardStars: 10, title: 'Invite 1 Friend' },
+  { id: 'ref_ms_5', friendsRequired: 5, rewardStars: 20, title: 'Invite 5 Friends' },
+  { id: 'ref_ms_10', friendsRequired: 10, rewardStars: 50, title: 'Invite 10 Friends' },
+  { id: 'ref_ms_25', friendsRequired: 25, rewardStars: 120, title: 'Invite 25 Friends' },
+  { id: 'ref_ms_50', friendsRequired: 50, rewardStars: 300, title: 'Invite 50 Friends' }
+];
+
+function getClaimedReferralMilestones() {
+  try {
+    const raw = localStorage.getItem(REFERRAL_MILESTONES_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return (parsed && typeof parsed === 'object') ? parsed : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function getTotalClaimedMilestoneStars(claimedMap) {
+  return REFERRAL_STAR_MILESTONES.reduce((sum, ms) => sum + (claimedMap[ms.id] ? ms.rewardStars : 0), 0);
+}
+
+function renderReferralMilestoneWidget(totalInvited) {
+  const activeSlot = document.getElementById('inviteActiveMilestoneSlot');
+  const summarySlot = document.getElementById('inviteMilestonesCompactSummary');
+  const menuPillEl = document.getElementById('inviteMenuPillPreview');
+  const claimed = getClaimedReferralMilestones();
+  const activeIndex = REFERRAL_STAR_MILESTONES.findIndex((m) => !claimed[m.id]);
+  const activeMs = activeIndex >= 0 ? REFERRAL_STAR_MILESTONES[activeIndex] : null;
+  const totalClaimedCount = REFERRAL_STAR_MILESTONES.filter((m) => claimed[m.id]).length;
+  const totalStarsWon = getTotalClaimedMilestoneStars(claimed);
+
+  if (menuPillEl) {
+    menuPillEl.innerHTML = activeMs
+      ? `${activeMs.friendsRequired}👤 → +${activeMs.rewardStars} <img src="../../assets/stickers/sticker-star.png" alt="Stars" class="ui-3d-sticker-xs" />`
+      : `All ${REFERRAL_STAR_MILESTONES.length} Claimed ✓`;
+  }
+
+  if (activeSlot) {
+    if (!activeMs) {
+      activeSlot.innerHTML = `
+        <div class="invite-ms-active-card completed">
+          <div class="invite-ms-top-row">
+            <span class="invite-ms-badge done">🏆 ALL TASKS DONE</span>
+            <span class="invite-ms-reward">+${totalStarsWon} ⭐ Won</span>
+          </div>
+          <div class="invite-ms-title">Every Invite Star Milestone Completed!</div>
+          <div class="invite-ms-sub">You invited ${totalInvited} friend${totalInvited === 1 ? '' : 's'} and unlocked all Star rewards.</div>
+        </div>
+      `;
+    } else {
+      const pct = Math.min(100, Math.round((totalInvited / activeMs.friendsRequired) * 100));
+      const remaining = Math.max(0, activeMs.friendsRequired - totalInvited);
+      const isReady = totalInvited >= activeMs.friendsRequired;
+      activeSlot.innerHTML = `
+        <div class="invite-ms-active-card ${isReady ? 'ready' : ''}">
+          <div class="invite-ms-top-row">
+            <span class="invite-ms-badge">🎯 TASK ${activeIndex + 1} OF ${REFERRAL_STAR_MILESTONES.length}</span>
+            <span class="invite-ms-reward">+${activeMs.rewardStars} ⭐</span>
+          </div>
+          <div class="invite-ms-title">${escapeHtml(activeMs.title)}</div>
+          <div class="invite-ms-progress-wrap">
+            <div class="invite-ms-progress-bar" style="width:${pct}%;"></div>
+            <span class="invite-ms-progress-lbl">${Math.min(totalInvited, activeMs.friendsRequired)} / ${activeMs.friendsRequired} Friends</span>
+          </div>
+          <div class="invite-ms-action-row">
+            ${isReady
+              ? `<button type="button" class="btn-claim-ms-star" onclick="claimReferralMilestoneReward('${activeMs.id}')">🎁 Claim +${activeMs.rewardStars} ⭐</button>`
+              : `<button type="button" class="btn-share-ms-invite" onclick="copyReferralCode()">Invite ${remaining} More • Copy Code 📋</button>`}
+          </div>
+        </div>
+      `;
+    }
+  }
+
+  if (summarySlot) {
+    const pillsHtml = REFERRAL_STAR_MILESTONES.map((ms) => {
+      const isDone = !!claimed[ms.id];
+      const isCurrent = activeMs && activeMs.id === ms.id;
+      const cls = isDone ? 'done' : (isCurrent ? 'current' : 'locked');
+      const icon = isDone ? '✅' : (isCurrent ? '🎯' : '🔒');
+      return `<span class="invite-ms-mini-pill ${cls}" title="${escapeHtml(ms.title)} → +${ms.rewardStars} ⭐">${icon} ${ms.friendsRequired}→+${ms.rewardStars}⭐</span>`;
+    }).join('');
+    summarySlot.innerHTML = `
+      <div class="invite-ms-summary-head">
+        <span>Star Task Progress: <b>${totalClaimedCount}/${REFERRAL_STAR_MILESTONES.length}</b></span>
+        <span style="color:#facc15;font-weight:800;">Total Bonus: +${totalStarsWon} ⭐</span>
+      </div>
+      <div class="invite-ms-mini-pills-row">${pillsHtml}</div>
+    `;
+  }
+}
+
+async function claimReferralMilestoneReward(msId) {
+  const ms = REFERRAL_STAR_MILESTONES.find((m) => m.id === msId);
+  if (!ms) return;
+  const claimed = getClaimedReferralMilestones();
+  if (claimed[ms.id]) {
+    showToast('✓ This Star milestone was already claimed.');
+    return;
+  }
+  const totalInvited = getStoredReferrals().length;
+  if (totalInvited < ms.friendsRequired) {
+    showToast(`Invite ${ms.friendsRequired - totalInvited} more friend(s) to unlock +${ms.rewardStars} ⭐!`);
+    return;
+  }
+
+  claimed[ms.id] = { claimedAt: Date.now(), stars: ms.rewardStars };
+  localStorage.setItem(REFERRAL_MILESTONES_KEY, JSON.stringify(claimed));
+
+  try {
+    if (window.Firebase && typeof window.Firebase.atomicBalanceMutation === 'function') {
+      await window.Firebase.atomicBalanceMutation({
+        deltaStars: ms.rewardStars,
+        reason: `Invite Star Task: ${ms.title}`,
+        txId: `ref_ms_${ms.id}_${Date.now()}`
+      });
+    } else {
+      const curStars = parseInt(localStorage.getItem('user_stars') || localStorage.getItem('task_game_stars') || '0', 10) || 0;
+      const nextStars = curStars + ms.rewardStars;
+      localStorage.setItem('user_stars', String(nextStars));
+      localStorage.setItem('task_game_stars', String(nextStars));
+    }
+  } catch (e) {
+    const curStars = parseInt(localStorage.getItem('user_stars') || localStorage.getItem('task_game_stars') || '0', 10) || 0;
+    const nextStars = curStars + ms.rewardStars;
+    localStorage.setItem('user_stars', String(nextStars));
+    localStorage.setItem('task_game_stars', String(nextStars));
+  }
+
+  if (typeof window.updateAllDomBalances === 'function') window.updateAllDomBalances();
+  ProfileAudio.playCopyChime();
+  renderReferralStatsAndList();
+  try {
+    const ch = new BroadcastChannel(SYNC_CHANNEL_NAME);
+    ch.postMessage({ type: 'REFERRAL_UPDATED', timestamp: Date.now() });
+    ch.close();
+  } catch (e) {}
+  showToast(`🎉 Claimed +${ms.rewardStars} ⭐ for "${ms.title}"!`);
+}
+window.claimReferralMilestoneReward = claimReferralMilestoneReward;
+
 function renderReferralStatsAndList() {
   const referrals = getStoredReferrals();
   const totalInvited = referrals.length;
   const totalCoins = totalInvited * 100; // 100 coin win per invite
+  const claimedMap = getClaimedReferralMilestones();
+  const totalStarsWon = getTotalClaimedMilestoneStars(claimedMap);
+
+  renderReferralMilestoneWidget(totalInvited);
 
   const countEl = document.getElementById('refTotalInvited');
   const coinsEl = document.getElementById('refCoinsEarned');
@@ -5302,8 +1771,8 @@ function renderReferralStatsAndList() {
 
   if (countEl) countEl.textContent = totalInvited.toString();
   if (coinsEl) coinsEl.textContent = `+${totalCoins.toLocaleString()} 🪙`;
-  if (rateEl) rateEl.textContent = '+100 🪙';
-  if (starsEl) starsEl.textContent = '0 ⭐';
+  if (rateEl) rateEl.textContent = '+10 ⭐';
+  if (starsEl) starsEl.textContent = `+${totalStarsWon.toLocaleString()} ⭐`;
   if (listCountEl) listCountEl.textContent = `${totalInvited} Friend${totalInvited === 1 ? '' : 's'}`;
 
   const listContainer = document.getElementById('recentReferralsList');
@@ -5834,8 +2303,43 @@ const DEFAULT_TG_PROFILE = {
   activeProfileTab: "gifts"
 };
 
-const TG_AVATAR_OPTIONS = ["⚡", "👤", "👑", "💎", "🚀", "🦊", "🦁", "🎯", "🤖", "💻"];
+const TG_AVATAR_OPTIONS = [
+  'avatar-1.png',
+  'avatar-2.png',
+  'avatar-3.png',
+  'avatar-4.png',
+  'avatar-5.png',
+  'avatar-6.png',
+  'avatar-7.png',
+  'avatar-8.png'
+];
 const TG_STATUS_EMOJIS = ["⚡", "👑", "💎", "🔥", "🚀", "🌟", "🛡️", "💫", "🦊", "🏆"];
+
+function resolveAvatarFileName(raw) {
+  if (typeof window.resolvePlayerAvatarFile === 'function') {
+    return window.resolvePlayerAvatarFile(raw);
+  }
+  const s = String(raw || '').trim();
+  const match = s.match(/avatar-([1-8])\.png/i);
+  if (match) return `avatar-${match[1]}.png`;
+  const map = { '⚡':'avatar-1.png','👤':'avatar-7.png','👑':'avatar-2.png','💎':'avatar-6.png','🚀':'avatar-7.png','🦊':'avatar-3.png','🦁':'avatar-4.png','🎯':'avatar-8.png','🤖':'avatar-5.png','💻':'avatar-5.png','🐯':'avatar-8.png','🔥':'avatar-8.png','⭐':'avatar-2.png' };
+  return map[s] || 'avatar-1.png';
+}
+
+function renderBorderless3DAvatar(el, rawAvatar, sizePx) {
+  if (!el) return;
+  if (typeof window.renderPlayerAvatarEl === 'function') {
+    window.renderPlayerAvatarEl(el, rawAvatar, sizePx);
+    return;
+  }
+  const file = resolveAvatarFileName(rawAvatar);
+  const px = Number(sizePx) || 36;
+  el.style.background = 'transparent';
+  el.style.border = 'none';
+  el.style.boxShadow = 'none';
+  el.style.borderRadius = '0';
+  el.innerHTML = `<img src="../../assets/avatars/${file}" alt="Avatar" class="sticker-3d-avatar-img" style="width:${px}px;height:${px}px;object-fit:contain;display:block;" />`;
+}
 
 let currentTgProfile = null;
 let currentMusicPlaying = false;
@@ -5861,24 +2365,27 @@ function getTgProfile() {
 }
 
 function saveTgProfile(profile) {
+  const resolvedAvatar = resolveAvatarFileName(profile.avatar);
+  profile.avatar = resolvedAvatar;
   currentTgProfile = profile;
   localStorage.setItem(TG_PROFILE_KEY, JSON.stringify(profile));
   // Sync to player_username & player_avatar
   const fullName = [profile.firstName, profile.lastName].filter(Boolean).join(' ') || 'Task Earner';
   localStorage.setItem('player_username', fullName);
-  localStorage.setItem('player_avatar', profile.avatar || '⚡');
+  localStorage.setItem('player_avatar', resolvedAvatar);
   localStorage.setItem(SYNC_FLAG_KEY, Date.now().toString());
 
-  // Also update usr_1 in task_game_users!
+  // Also update active player record in task_game_users!
   try {
     const rawUsers = localStorage.getItem('task_game_users');
+    const curUid = localStorage.getItem('player_uid') || 'usr_1';
     if (rawUsers) {
       let users = JSON.parse(rawUsers);
       if (Array.isArray(users)) {
-        let u1 = users.find(u => u.id === 'usr_1');
+        let u1 = users.find(u => u && (u.id === curUid || u.uid === curUid || u.id === 'usr_1'));
         if (u1) {
           u1.name = fullName;
-          u1.avatar = profile.avatar || '⚡';
+          u1.avatar = resolvedAvatar;
           localStorage.setItem('task_game_users', JSON.stringify(users));
         }
       }
@@ -5889,11 +2396,14 @@ function saveTgProfile(profile) {
   const topUserName = document.querySelector('.header-user .user-name');
   if (topUserName) topUserName.textContent = fullName;
   const topUserAvatar = document.querySelector('.header-user .user-avatar');
-  if (topUserAvatar) topUserAvatar.textContent = profile.avatar || '⚡';
+  renderBorderless3DAvatar(topUserAvatar, resolvedAvatar, 36);
+  if (typeof window.saveCurrentProfileToFirestore === 'function') {
+    try { window.saveCurrentProfileToFirestore(); } catch (e) {}
+  }
 
   if (syncChannel) {
     try {
-      syncChannel.postMessage({ type: 'PROFILE_UPDATED', timestamp: Date.now(), name: fullName, avatar: profile.avatar || '⚡' });
+      syncChannel.postMessage({ type: 'PROFILE_UPDATED', timestamp: Date.now(), name: fullName, avatar: resolvedAvatar });
     } catch (e) {}
   }
 
@@ -5909,9 +2419,11 @@ function renderTgProfileUI() {
   const fullName = [p.firstName, p.lastName].filter(Boolean).join(' ') || 'Task Earner';
   if (nameEl) nameEl.textContent = fullName;
 
-  // Avatar
+  // Big 3D Borderless Avatar
   const bigAvatar = document.getElementById('tgProfileBigAvatar');
-  if (bigAvatar) bigAvatar.textContent = p.avatar || '⚡';
+  const savedAvatar = p.avatar || localStorage.getItem('player_avatar') || 'avatar-1.png';
+  renderBorderless3DAvatar(bigAvatar, savedAvatar, 72);
+  renderBorderless3DAvatar(document.getElementById('headerUserAvatar'), savedAvatar, 36);
 
   // Emoji Status
   const emojiStatusEl = document.getElementById('tgProfileEmojiStatus');
@@ -6010,11 +2522,11 @@ function openPersonalChannelLink() {
 }
 
 // Edit Profile Modal
-let selectedEditAvatar = "⚡";
+let selectedEditAvatar = "avatar-1.png";
 
 function openEditTgProfileModal() {
   const p = getTgProfile();
-  selectedEditAvatar = p.avatar || "⚡";
+  selectedEditAvatar = resolveAvatarFileName(p.avatar || localStorage.getItem('player_avatar') || "avatar-1.png");
 
   const firstNameIn = document.getElementById('inputTgFirstName');
   const lastNameIn = document.getElementById('inputTgLastName');
@@ -6053,18 +2565,22 @@ function renderAvatarOptions() {
   const list = document.getElementById('tgAvatarOptionList');
   if (!list) return;
 
-  list.innerHTML = TG_AVATAR_OPTIONS.map(ico => `
-    <button type="button" 
-      class="tg-emoji-picker-item ${ico === selectedEditAvatar ? 'active' : ''}" 
-      style="padding: 0.35rem 0.6rem; font-size: 1.3rem; border: 1px solid ${ico === selectedEditAvatar ? '#38bdf8' : '#1e293b'}; background: ${ico === selectedEditAvatar ? 'rgba(56,189,248,0.2)' : '#0a1738'}; border-radius: 8px; cursor: pointer;"
-      onclick="selectEditAvatar('${ico}')">
-      ${ico}
-    </button>
-  `).join('');
+  list.innerHTML = TG_AVATAR_OPTIONS.map((avFile, idx) => {
+    const isActive = avFile === selectedEditAvatar;
+    return `
+      <button type="button"
+        class="avatar-3d-option ${isActive ? 'active' : ''}"
+        data-avatar="${avFile}"
+        title="Avatar ${idx + 1}"
+        onclick="selectEditAvatar('${avFile}')">
+        <img src="../../assets/avatars/${avFile}" alt="Avatar ${idx + 1}" class="sticker-3d-avatar-img" style="width: 48px; height: 48px; object-fit: contain; display: block; pointer-events: none;" />
+      </button>
+    `;
+  }).join('');
 }
 
-function selectEditAvatar(ico) {
-  selectedEditAvatar = ico;
+function selectEditAvatar(avFile) {
+  selectedEditAvatar = resolveAvatarFileName(avFile);
   renderAvatarOptions();
 }
 
@@ -6170,27 +2686,76 @@ window.copyProfileUsername = copyProfileUsername;
 window.openPersonalChannelLink = openPersonalChannelLink;
 window.toggleTgProfileMusic = toggleTgProfileMusic;
 
+function getLiveProfileStreakCount() {
+  if (typeof window.getDailyStreakState === 'function') {
+    try {
+      const ds = window.getDailyStreakState();
+      if (ds) {
+        if (ds.isStreakBroken) return 0;
+        if (ds.streakCount > 0) return ds.streakCount;
+      }
+    } catch (e) {}
+  }
+  const rawDailyCount = parseInt(localStorage.getItem('task_daily_streak_count') || '0', 10) || 0;
+  if (rawDailyCount > 0) return rawDailyCount;
+  try {
+    const dsV2 = JSON.parse(localStorage.getItem('task_game_daily_streak_v2') || 'null');
+    if (dsV2 && typeof dsV2.streakCount === 'number' && dsV2.streakCount > 0) return dsV2.streakCount;
+  } catch (e) {}
+  try {
+    const prog = JSON.parse(localStorage.getItem('tap_empire_daily_progression') || 'null');
+    const tasksDone = parseInt(localStorage.getItem('task_game_total_tasks_completed') || localStorage.getItem('completed_tasks_count') || '0', 10) || 0;
+    if (prog && typeof prog.streakDays === 'number' && prog.streakDays > 0 && tasksDone > 0) return prog.streakDays;
+  } catch (e) {}
+  const legacyStreak = parseInt(localStorage.getItem('task_game_streak_days') || localStorage.getItem('task_game_login_streak') || '0', 10) || 0;
+  return Math.max(0, legacyStreak);
+}
+
 function updateProfileOverviewStats() {
-  const tasks = localStorage.getItem('task_game_total_tasks_completed') || '0';
-  const streak = localStorage.getItem('task_game_streak_days') || localStorage.getItem('task_game_login_streak') || '1';
+  const tasksNum = Math.max(
+    parseInt(localStorage.getItem('task_game_total_tasks_completed') || '0', 10) || 0,
+    parseInt(localStorage.getItem('completed_tasks_count') || '0', 10) || 0
+  );
+  const streakNum = getLiveProfileStreakCount();
   const tasksEl = document.getElementById('profileStatTasks');
   const levelEl = document.getElementById('profileStatGames');
   const streakEl = document.getElementById('profileStatStreak');
-  if (tasksEl) tasksEl.textContent = tasks;
+  if (tasksEl) tasksEl.textContent = tasksNum.toLocaleString();
   if (levelEl) {
-    const taskCount = parseInt(tasks, 10) || 0;
-    const tier = Math.max(1, Math.floor(taskCount / 10) + 1);
+    const tier = Math.max(1, Math.floor(tasksNum / 10) + 1);
     levelEl.textContent = tier.toString();
   }
-  if (streakEl) streakEl.textContent = streak;
+  if (streakEl) streakEl.textContent = String(streakNum);
 }
+window.updateProfileOverviewStats = updateProfileOverviewStats;
 
 window.addEventListener('balance:changed', () => {
   updateAdminLiveDisplays();
+  updateProfileOverviewStats();
 });
 
 window.addEventListener('balance:synced', () => {
   updateAdminLiveDisplays();
+  updateProfileOverviewStats();
+});
+
+window.addEventListener('streak:updated', () => {
+  updateProfileOverviewStats();
+});
+
+window.addEventListener('tasks:changed', () => {
+  updateProfileOverviewStats();
+});
+
+window.addEventListener('firebase:ready', () => {
+  updateProfileOverviewStats();
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) {
+    updateAdminLiveDisplays();
+    updateProfileOverviewStats();
+  }
 });
 
 // Cross-tab and sync channel listeners
@@ -6208,7 +2773,18 @@ window.addEventListener('storage', (e) => {
     if (typeof updatePlayerSessionUI === 'function') updatePlayerSessionUI();
     updateAdminLiveDisplays();
   }
-  if (e.key === 'task_game_total_tasks_completed' || e.key === 'task_game_ads_watched_count') {
+  if (
+    !e.key ||
+    e.key === 'task_game_total_tasks_completed' ||
+    e.key === 'completed_tasks_count' ||
+    e.key === 'task_game_ads_watched_count' ||
+    e.key === 'task_daily_streak_count' ||
+    e.key === 'task_daily_streak_last_date' ||
+    e.key === 'task_game_daily_streak_v2' ||
+    e.key === 'user_streak_days' ||
+    e.key === 'task_game_streak_days' ||
+    e.key === 'tap_empire_daily_progression'
+  ) {
     updateProfileOverviewStats();
   }
 });
@@ -6738,194 +3314,6 @@ window.handlePushBannerClick = handlePushBannerClick;
 
 
 
-// -----------------------------------------------------------------------------
-// SESSION-WISE LEADERBOARD DATA STORE & ARCHIVE (PROFILE ADMIN)
-// -----------------------------------------------------------------------------
-
-function getProfileRankStars(rank) {
-  if (rank === 1) return 10000;
-  if (rank === 2) return 5000;
-  if (rank >= 3 && rank <= 5) return 1000;
-  if (rank >= 6 && rank <= 10) return 500;
-  if (rank >= 11 && rank <= 20) return 100;
-  return 0;
-}
-
-function getStoredProfileSessions() {
-  try {
-    const raw = localStorage.getItem(SESSIONS_STORAGE_KEY);
-    const list = raw ? JSON.parse(raw) : [];
-    return Array.isArray(list) ? list : [];
-  } catch(e) {
-    return [];
-  }
-}
-
-function renderProfileSessionHistory(filterId = 'all') {
-  const container = document.getElementById('profileSessionHistoryContainer');
-  if (!container) return;
-
-  const sessions = getStoredProfileSessions();
-
-  // Populate filter dropdown
-  const filterSelect = document.getElementById('profileSessionFilterSelect');
-  if (filterSelect) {
-    const cur = filterSelect.value || 'all';
-    filterSelect.innerHTML = '<option value="all">All Sessions (' + sessions.length + ')</option>' +
-      sessions.map(s => `<option value="${escapeHtml(s.id)}" ${cur === s.id ? 'selected' : ''}>${escapeHtml(s.name || ('Session ' + s.sessionNumber))}</option>`).join('');
-  }
-
-  let list = [...sessions];
-  if (filterId !== 'all') {
-    list = list.filter(s => s.id === filterId);
-  }
-
-  if (list.length === 0) {
-    container.innerHTML = `
-      <div style="text-align: center; padding: 1.25rem 0.5rem; background: rgba(6, 14, 36, 0.6); border: 1px dashed rgba(56, 189, 248, 0.25); border-radius: 10px; color: #94a3b8; font-size: 0.75rem;">
-        No historical sessions archived yet. Click "Archive Current Session" above to store session rankings.
-      </div>`;
-    return;
-  }
-
-  container.innerHTML = list.map(session => {
-    const standings = session.standings || [];
-    const topWinner = session.topWinner || standings[0];
-    const sDate = session.startTime ? new Date(session.startTime).toLocaleDateString() : 'N/A';
-    const eDate = session.endTime ? new Date(session.endTime).toLocaleDateString() : 'N/A';
-
-    return `
-      <div style="background: rgba(6, 14, 36, 0.85); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 10px; margin-bottom: 0.75rem; padding: 0.75rem;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
-          <div style="font-size: 0.82rem; font-weight: 800; color: #ffffff;">${escapeHtml(session.name || ('Session ' + session.sessionNumber))}</div>
-          <span style="font-size: 0.65rem; padding: 2px 6px; border-radius: 8px; background: rgba(52, 211, 153, 0.15); color: #34d399; font-weight: 800;">Archived</span>
-        </div>
-        <div style="font-size: 0.7rem; color: #94a3b8; margin-bottom: 0.5rem;">
-          ${sDate} - ${eDate} • ${session.totalContenders || standings.length} Contenders • ${Number(session.totalTasksCompleted || 0).toLocaleString()} Tasks
-        </div>
-        ${topWinner ? `
-        <div style="background: rgba(250, 204, 21, 0.1); border-radius: 6px; padding: 4px 8px; font-size: 0.72rem; color: #fef08a; font-weight: 800; margin-bottom: 0.5rem; display: flex; justify-content: space-between;">
-          <span>🥇 Winner: ${escapeHtml(topWinner.name)} (${topWinner.eventTasks || 0} Tasks)</span>
-          <span style="color: #facc15;">+${Number(topWinner.starReward || 10000).toLocaleString()} ⭐</span>
-        </div>` : ''}
-        <div style="max-height: 140px; overflow-y: auto;">
-          ${standings.map(st => `
-            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.72rem; padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
-              <span style="color: #ffffff;"><b style="color: #38bdf8;">#${st.rank}</b> ${escapeHtml(st.name)}</span>
-              <span style="color: #facc15; font-weight: 700;">${st.eventTasks || 0} Tasks (+ ${Number(st.starReward || 0).toLocaleString()} ⭐)</span>
-            </div>
-          `).join('')}
-        </div>
-      </div>`;
-  }).join('');
-}
-
-function filterProfileSessionHistory(sessionId) {
-  renderProfileSessionHistory(sessionId);
-}
-
-function adminArchiveProfileSession() {
-  const evt = getLeaderboardEventState();
-  const qualified = usersData
-    .filter(u => Number(u.totalTasks || 0) >= 100)
-    .sort((a, b) => (Number(b.eventTasks || 0)) - (Number(a.eventTasks || 0)));
-
-  const sessionNum = evt.seasonNumber || 1;
-  const sessionName = evt.name || `Season ${sessionNum}: 3-Month Championship`;
-
-  if (!confirm(`Conclude & Archive "${sessionName}"?\n\n• Captures all ${qualified.length} qualified contenders and saves full rankings to the session-wise store.\n• Event tasks counter will reset to 0 for Season ${sessionNum + 1}.\n• Ready to proceed?`)) {
-    return;
-  }
-
-  const now = Date.now();
-  const standings = qualified.map((u, idx) => {
-    const rank = idx + 1;
-    const starReward = getProfileRankStars(rank);
-    return {
-      rank,
-      id: u.id || `usr_${idx}`,
-      name: u.name || 'Anonymous',
-      avatar: u.avatar || '⚡',
-      eventTasks: Number(u.eventTasks || 0),
-      totalTasks: Number(u.totalTasks || 0),
-      starReward
-    };
-  });
-
-  const totalTasks = standings.reduce((sum, s) => sum + s.eventTasks, 0);
-  const totalStars = standings.reduce((sum, s) => sum + s.starReward, 0);
-
-  const archivedSession = {
-    id: `session_${sessionNum}_${now}`,
-    sessionNumber: sessionNum,
-    name: sessionName,
-    startTime: evt.startTime || (now - (90 * 24 * 60 * 60 * 1000)),
-    endTime: now,
-    archivedAt: now,
-    status: 'concluded',
-    totalContenders: standings.length,
-    totalTasksCompleted: totalTasks,
-    totalStarsAwarded: totalStars,
-    topWinner: standings[0] || null,
-    standings
-  };
-
-  const sessions = getStoredProfileSessions();
-  sessions.unshift(archivedSession);
-
-  try {
-    localStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(sessions));
-    if (window.Firebase && typeof window.Firebase.saveLeaderboardSessionsToCloud === 'function') {
-      window.Firebase.saveLeaderboardSessionsToCloud(sessions);
-    }
-    const bc = new BroadcastChannel('nova_task_sync');
-    bc.postMessage({ type: 'SESSIONS_UPDATED', timestamp: now });
-    bc.close();
-  } catch(e) {}
-
-  // Reset users' eventTasks
-  usersData.forEach(u => { u.eventTasks = 0; });
-  saveUsersAndSync();
-
-  // Advance season
-  const THREE_MONTHS_HOURS = 2160;
-  const THREE_MONTHS_DAYS = 90;
-  const THREE_MONTHS_MS = THREE_MONTHS_HOURS * 60 * 60 * 1000;
-  const nextSeasonNum = sessionNum + 1;
-  const nextEvt = {
-    id: `global_season_${nextSeasonNum}`,
-    seasonNumber: nextSeasonNum,
-    name: `Season ${nextSeasonNum}: 3-Month Championship`,
-    startTime: now,
-    endTime: now + THREE_MONTHS_MS,
-    durationHours: THREE_MONTHS_HOURS,
-    durationDays: THREE_MONTHS_DAYS,
-    status: 'active',
-    isGlobal: true,
-    isManualOverride: true
-  };
-  localStorage.setItem(UNIFIED_EVENT_KEY, JSON.stringify(nextEvt));
-  localStorage.removeItem('task_leaderboard_event_v1');
-  localStorage.setItem(SYNC_FLAG_KEY, now.toString());
-
-  try {
-    if (window.Firebase && typeof window.Firebase.saveGlobalLeaderboardEventToCloud === 'function') {
-      window.Firebase.saveGlobalLeaderboardEventToCloud(nextEvt);
-    }
-    const bc = new BroadcastChannel('nova_task_sync');
-    bc.postMessage({ type: 'EVENT_RESTART', event: nextEvt, timestamp: now });
-    bc.close();
-  } catch(e) {}
-
-  renderAdminEventSection();
-  showToast(`🏆 ${sessionName} archived! Season ${nextSeasonNum} is now live.`);
-}
-
-window.adminArchiveProfileSession = adminArchiveProfileSession;
-window.filterProfileSessionHistory = filterProfileSessionHistory;
-window.renderProfileSessionHistory = renderProfileSessionHistory;
-
-
 // ============================================================================
 // PROFILE TAB SLIDE SIGN OUT MODAL HANDLERS
 // ============================================================================
@@ -6981,1299 +3369,14 @@ window.closeProfileSignOutModal = closeProfileSignOutModal;
 window.handleSignOutModalBackdropClick = handleSignOutModalBackdropClick;
 window.confirmProfileSignOut = confirmProfileSignOut;
 
-
-// ============================================================================
-// PLAYER DETAILS MODAL & DIRECT DELETE FUNCTIONS
-// ============================================================================
-function openUserDetailModal(userId) {
-  const user = usersData.find(u => u.id === userId);
-  if (!user) return;
-
-  const modal = document.getElementById('adminUserDetailModalOverlay');
-  const body = document.getElementById('adminUserDetailModalBody');
-  if (!modal || !body) return;
-
-  const isInactive = user.status === 'suspended' || user.status === 'inactive';
-  const isActive = !isInactive;
-  const statusLabel = user.status === 'suspended' ? 'Suspended' : (user.status === 'inactive' ? 'Inactive' : 'Active');
-  const roleBadge = user.role === 'admin' ? '👑 Admin' : (user.role === 'vip' ? '🌟 VIP' : '👤 Player');
-  const handle = user.username ? (user.username.startsWith('@') ? user.username : '@' + user.username) : '@' + (user.name || 'player').toLowerCase().replace(/\s+/g, '');
-  const email = user.email || (user.id + '@novatasks.io');
-
-  body.innerHTML = `
-    <!-- Player Hero Header -->
-    <div style="display: flex; align-items: center; gap: 0.85rem; background: #060e24; padding: 0.85rem; border-radius: 12px; border: 1px solid rgba(168, 85, 247, 0.35); margin-bottom: 0.85rem;">
-      <div style="font-size: 2.4rem; line-height: 1;">${user.avatar || '⚡'}</div>
-      <div style="flex: 1;">
-        <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-          <span style="font-weight: 800; font-size: 1.05rem; color: #ffffff; display: inline-flex; align-items: center; gap: 4px;">
-            <span>👤</span> ${escapeHtml(user.name || 'Player')}
-          </span>
-          <span style="font-size: 0.65rem; font-weight: 800; background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); padding: 1px 6px; border-radius: 4px;">${roleBadge}</span>
-          <span style="font-size: 0.65rem; font-weight: 800; background: ${isActive ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)'}; color: ${isActive ? '#34d399' : '#f87171'}; border: 1px solid ${isActive ? 'rgba(16, 185, 129, 0.4)' : 'rgba(239, 68, 68, 0.4)'}; padding: 1px 6px; border-radius: 4px;">${statusLabel}</span>
-        </div>
-        <div style="font-size: 0.75rem; color: #38bdf8; font-family: monospace; margin-top: 2px;">${escapeHtml(handle)}</div>
-      </div>
-    </div>
-
-    <!-- Details Grid -->
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.55rem; margin-bottom: 0.85rem;">
-      <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 0.5rem 0.65rem;">
-        <div style="font-size: 0.68rem; color: #94a3b8; font-weight: 700;">USER ID (UID)</div>
-        <div style="font-size: 0.82rem; font-family: monospace; color: #38bdf8; font-weight: 700; margin-top: 2px;">${escapeHtml(user.id)}</div>
-      </div>
-      <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 0.5rem 0.65rem;">
-        <div style="font-size: 0.68rem; color: #94a3b8; font-weight: 700;">LEVEL TIER</div>
-        <div style="font-size: 0.82rem; color: #e2e8f0; font-weight: 800; margin-top: 2px;">${escapeHtml(user.level || 'LVL 1 • NOVICE')}</div>
-      </div>
-      <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 0.5rem 0.65rem; grid-column: span 2;">
-        <div style="font-size: 0.68rem; color: #94a3b8; font-weight: 700;">EMAIL ADDRESS</div>
-        <div style="font-size: 0.82rem; color: #e2e8f0; font-family: monospace; margin-top: 2px;">✉️ ${escapeHtml(email)}</div>
-      </div>
-    </div>
-
-    <!-- Balance & Economy Box -->
-    <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 0.6rem 0.75rem; margin-bottom: 0.85rem;">
-      <div style="font-size: 0.68rem; color: #94a3b8; font-weight: 700; margin-bottom: 0.4rem;">ECONOMY &amp; BALANCES</div>
-      <div style="display: flex; gap: 0.6rem; flex-wrap: wrap;">
-        <span style="color: #fbbf24; font-weight: 800; font-size: 0.82rem; background: rgba(245, 158, 11, 0.15); padding: 3px 8px; border-radius: 6px; border: 1px solid rgba(245, 158, 11, 0.35);">🪙 ${Number(user.coins || 0).toLocaleString()} Coins</span>
-        <span style="color: #facc15; font-weight: 800; font-size: 0.82rem; background: rgba(250, 204, 21, 0.15); padding: 3px 8px; border-radius: 6px; border: 1px solid rgba(250, 204, 21, 0.35);">⭐ ${Number(user.stars || 0).toLocaleString()} Stars</span>
-        <span style="color: #c084fc; font-weight: 800; font-size: 0.82rem; background: rgba(192, 132, 252, 0.15); padding: 3px 8px; border-radius: 6px; border: 1px solid rgba(192, 132, 252, 0.35);">🎟️ ${Number(user.tickets || 0).toLocaleString()} Tickets</span>
-        ${user.sfCoins ? `<span style="color: #fde047; font-weight: 800; font-size: 0.82rem; background: rgba(253, 224, 71, 0.15); padding: 3px 8px; border-radius: 6px; border: 1px solid rgba(253, 224, 71, 0.35);">🌻 ${Number(user.sfCoins).toLocaleString()} SF Coins</span>` : ''}
-        ${user.sfBuckets ? `<span style="color: #38bdf8; font-weight: 800; font-size: 0.82rem; background: rgba(56, 189, 248, 0.15); padding: 3px 8px; border-radius: 6px; border: 1px solid rgba(56, 189, 248, 0.35);">💧 ${user.sfBuckets} Buckets</span>` : ''}
-      </div>
-    </div>
-
-    <!-- Modal Action Buttons -->
-    <div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 0.75rem;">
-      <button type="button" class="btn-card-action" onclick="closeUserDetailModal()" style="padding: 0.5rem 0.85rem; font-weight: 700; border-radius: 8px;">
-        Close
-      </button>
-      <button type="button" class="btn-card-action" onclick="toggleUserActiveStatus('${user.id}'); openUserDetailModal('${user.id}')" style="background: ${isActive ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)'}; border: 1px solid ${isActive ? 'rgba(239, 68, 68, 0.4)' : 'rgba(16, 185, 129, 0.4)'}; color: ${isActive ? '#f87171' : '#34d399'}; padding: 0.5rem 0.85rem; font-weight: 700; border-radius: 8px;">
-        ${isActive ? '🔴 Deactivate' : '🟢 Activate'}
-      </button>
-      <button type="button" class="btn-card-action" onclick="closeUserDetailModal(); directResetUser('${user.id}')" style="background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.4); color: #fbbf24; padding: 0.5rem 0.85rem; font-weight: 700; border-radius: 8px;">
-        🔄 Reset Data
-      </button>
-      <button type="button" class="btn-card-action" onclick="closeUserDetailModal(); directDeleteUser('${user.id}')" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #f87171; padding: 0.5rem 0.85rem; font-weight: 700; border-radius: 8px;">
-        🗑️ Delete
-      </button>
-      <button type="button" class="btn-card-action" onclick="closeUserDetailModal(); openEditUserModal('${user.id}')" style="background: rgba(56, 189, 248, 0.2); border: 1px solid rgba(56, 189, 248, 0.5); color: #38bdf8; padding: 0.5rem 0.85rem; font-weight: 700; border-radius: 8px;">
-        ✏️ Edit Data
-      </button>
-    </div>
-  `;
-
-  modal.style.display = 'flex';
-  setTimeout(() => modal.classList.add('active'), 10);
-}
-
-function closeUserDetailModal() {
-  const modal = document.getElementById('adminUserDetailModalOverlay');
-  if (modal) {
-    modal.classList.remove('active');
-    setTimeout(() => { modal.style.display = 'none'; }, 200);
-  }
-}
-
-function handleUserDetailModalBackdropClick(e) {
-  if (e.target && e.target.id === 'adminUserDetailModalOverlay') {
-    closeUserDetailModal();
-  }
-}
-
-async function directResetUser(userId) {
-  const user = usersData.find(u => u.id === userId);
-  if (!user) return;
-
-  const userName = user.name || user.username || userId;
-  const msg = `⚠️ RESET ALL USER DATA FOR: "${userName}" (${userId})?\n\nThis will permanently reset:\n• Coins: 0\n• Stars: 0\n• Tickets: 0\n• Levels, XP & Energy: Reset to initial default\n• Tasks & Event missions: 0 completed\n• Streaks, Claims, Rewards & Passes: Reset\n• Game activities & Records: Reset\n\nThis cannot be undone. Are you sure you want to proceed?`;
-  if (!confirm(msg)) return;
-
-  user.coins = 0;
-  user.stars = 0;
-  user.tickets = 0;
-  user.eventTasks = 0;
-  user.totalTasks = 0;
-  user.level = 'LVL 1 • NOVICE';
-  user.passLevel = 1;
-  user.xp = 0;
-  user.energy = 100;
-
-  const currentUid = localStorage.getItem('player_uid');
-  const currentName = localStorage.getItem('player_username') || 'Player';
-  if (userId === 'usr_1' || userId === currentUid || (user && user.name === currentName)) {
-    localStorage.setItem('task_game_coins', '0');
-    localStorage.setItem('user_coins', '0');
-    localStorage.setItem('task_game_stars', '0');
-    localStorage.setItem('user_stars', '0');
-    localStorage.setItem('task_game_tickets', '0');
-    localStorage.setItem('user_tickets', '0');
-    localStorage.setItem('task_user_tickets', '0');
-    localStorage.setItem('task_game_event_tasks', '0');
-    localStorage.setItem('task_game_event_tasks_count', '0');
-    localStorage.setItem('task_game_total_tasks', '0');
-    localStorage.setItem('task_game_total_tasks_completed', '0');
-    localStorage.setItem('completed_tasks_count', '0');
-    if (typeof window.updateAllDomBalances === 'function') {
-      window.updateAllDomBalances(0, 0, 0);
-    }
-    updateAdminLiveDisplays();
-    updateProfileDisplays();
-  }
-
-  const resetFn = (window.Firebase && window.Firebase.resetUserAccountInCloud) || window.resetUserAccountInCloud;
-  if (typeof resetFn === 'function') {
-    try {
-      await resetFn(userId, user);
-    } catch (err) {
-      console.warn('[Profile Admin] Cloud reset error:', err);
-    }
-  }
-
-  saveUsersAndSync();
-  renderAdminUsersList();
-  showToast(`🔄 All data for player "${userName}" has been reset to zero! ✓`, 3500);
-}
-
-async function directDeleteUser(userId) {
-  const user = usersData.find(u => u.id === userId);
-  if (!user) return;
-
-  const userName = user.name || user.username || userId;
-  if (!confirm(`Are you sure you want to permanently delete player "${userName}"?\n\nThis will remove the player record and all data from Firebase.`)) {
-    return;
-  }
-
-  const deletedCopy = { ...user };
-  usersData = usersData.filter(u => u.id !== userId);
-
-  // Purge from Firebase Cloud Firestore
-  const cloudDeleter = (window.Firebase && window.Firebase.deleteUserFromCloud) || window.deleteUserFromCloud;
-  if (typeof cloudDeleter === 'function') {
-    try {
-      cloudDeleter(userId, deletedCopy).catch(() => {});
-    } catch (e) {}
-  }
-
-  if (window.Firebase && typeof window.Firebase.deleteUserFromCloud === 'function') {
-    try {
-      await window.Firebase.deleteUserFromCloud(userId, deletedCopy);
-    } catch (err) {
-      console.warn("[Profile Admin] Cloud delete error:", err);
-    }
-  }
-
-  // Reset local player session if the deleted user is the current player
-  const currentUid = localStorage.getItem('player_uid');
-  const currentName = localStorage.getItem('player_username');
-  if (userId === 'usr_1' || userId === currentUid || (deletedCopy.name && deletedCopy.name === currentName)) {
-    localStorage.removeItem('player_uid');
-    localStorage.removeItem('player_email');
-    localStorage.setItem('player_logged_in', 'false');
-    localStorage.setItem('task_game_coins', '0');
-    localStorage.setItem('task_game_stars', '0');
-    localStorage.setItem('task_game_tickets', '0');
-    localStorage.setItem('user_tickets', '0');
-    localStorage.setItem('task_user_tickets', '0');
-    localStorage.setItem('completed_tasks_count', '0');
-    localStorage.setItem('ads_watched_count', '0');
-  }
-
-  saveUsersAndSync();
-  renderAdminUsersList();
-  showToast(`🗑️ Player "${userName}" deleted successfully.`);
-}
-
-window.openUserDetailModal = openUserDetailModal;
-window.closeUserDetailModal = closeUserDetailModal;
-window.handleUserDetailModalBackdropClick = handleUserDetailModalBackdropClick;
-window.directResetUser = directResetUser;
-window.directDeleteUser = directDeleteUser;
-
-// Start admin event timer on init
-if (typeof startAdminEventTimer === 'function') {
-  startAdminEventTimer();
-}
-
-
-window.updateProfilePackageTotalPrice = function() {
-  const p1 = parseInt(document.getElementById('profileEventTask1Price')?.value || '500', 10) || 0;
-  const p2 = parseInt(document.getElementById('profileEventTask2Price')?.value || '250', 10) || 0;
-  const p3 = parseInt(document.getElementById('profileEventTask3Price')?.value || '250', 10) || 0;
-  const total = p1 + p2 + p3;
-  const label = document.getElementById('profilePackageTotalBountyLabel');
-  if (label) label.textContent = total.toLocaleString() + ' Coins';
-};
-
-window.handleAdminTaskCategoryChange = function(val) {
-  const builder = document.getElementById('profileEventPackBuilder');
-  const levelGroup = document.getElementById('profileTaskLevelGroup');
-  const singleUrlGroup = document.getElementById('taskSingleUrlGroup');
-  const singleCodeGroup = document.getElementById('taskSingleSecretGroup');
-
-  if (val === 'event') {
-    if (builder) builder.style.display = 'block';
-    if (levelGroup) levelGroup.style.display = 'none';
-  } else {
-    if (builder) builder.style.display = 'none';
-    if (levelGroup) levelGroup.style.display = 'block';
-  }
-};
-
-
-
-// ============================================================================
-// ADMIN EVENT PAGE: PRO TASKS & PASS MULTI-TAB CONTROLLER (DETAIL & EDIT)
-// ============================================================================
-
-let currentAdminEventTab = 'pro';
-
-const PRO_EVENT_SETTINGS_KEY = 'task_game_pro_event_settings';
-const PASS_CONFIG_STORAGE_KEY = 'task_pass_config';
-
-function getStoredProEventSettings() {
+window.addEventListener('profile:cloudSynced', () => {
   try {
-    const raw = localStorage.getItem(PRO_EVENT_SETTINGS_KEY);
-    if (raw) return JSON.parse(raw);
+    if (typeof updateProfileDisplays === 'function') updateProfileDisplays();
+    if (typeof updateLiveBalanceDisplay === 'function') updateLiveBalanceDisplay();
+    if (typeof renderReferralStatsAndList === 'function') renderReferralStatsAndList();
+    if (typeof updateProfileOverviewStats === 'function') updateProfileOverviewStats();
   } catch (e) {}
-
-  return {
-    active: true,
-    durationHours: 48,
-    packageCoinCost: 50,
-    packageTicketCost: 2,
-    startTime: Date.now() - 3600000,
-    endTime: Date.now() + 48 * 3600000,
-    tasks: [
-      {
-        id: "task_pro_1",
-        title: "Mission 1: Promo Signup",
-        category: "pro",
-        rewardCoins: 500,
-        reward: 500,
-        coins: 500,
-        url: "https://youtube.com",
-        link: "https://youtube.com",
-        verificationCode: "583921",
-        code: "583921",
-        secretCode: "583921",
-        description: "First mission of 3-task package (Half price awarded here!)",
-        isPackagePart: true,
-        packagePartIndex: 1,
-        active: true
-      },
-      {
-        id: "task_pro_2",
-        title: "Mission 2: Community Join",
-        category: "pro",
-        rewardCoins: 250,
-        reward: 250,
-        coins: 250,
-        url: "https://telegram.org",
-        link: "https://telegram.org",
-        verificationCode: "749201",
-        code: "749201",
-        secretCode: "749201",
-        description: "Second mission of 3-task package",
-        isPackagePart: true,
-        packagePartIndex: 2,
-        active: true
-      },
-      {
-        id: "task_pro_3",
-        title: "Mission 3: Survey Bonus",
-        category: "pro",
-        rewardCoins: 250,
-        reward: 250,
-        coins: 250,
-        url: "https://google.com",
-        link: "https://google.com",
-        verificationCode: "382910",
-        code: "382910",
-        secretCode: "382910",
-        description: "Third mission of 3-task package (Full package completion bounty!)",
-        isPackagePart: true,
-        packagePartIndex: 3,
-        active: true
-      }
-    ]
-  };
-}
-
-function saveProEventSettings(settings) {
-  try {
-    localStorage.setItem(PRO_EVENT_SETTINGS_KEY, JSON.stringify(settings));
-    localStorage.setItem(SYNC_FLAG_KEY, Date.now().toString());
-
-    if (settings.tasks && Array.isArray(settings.tasks)) {
-      settings.tasks.forEach(pt => {
-        const idx = tasksData.findIndex(t => t.id === pt.id);
-        if (idx !== -1) {
-          tasksData[idx] = { ...tasksData[idx], ...pt };
-        } else {
-          tasksData.push(pt);
-        }
-      });
-      localStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(tasksData));
-      localStorage.setItem('admin_tasks', JSON.stringify(tasksData));
-    }
-
-    try {
-      const bc = new BroadcastChannel('nova_task_sync');
-      bc.postMessage({ type: 'PRO_EVENT_UPDATED', settings, timestamp: Date.now() });
-      bc.postMessage({ type: 'TASKS_UPDATED', timestamp: Date.now() });
-      bc.close();
-    } catch(e) {}
-  } catch(e) {
-    console.error('Error saving pro event settings:', e);
-  }
-}
-
-function getStoredPassConfig() {
-  try {
-    const raw = localStorage.getItem(PASS_CONFIG_STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch(e) {}
-  return {
-    seasonName: "Season 6: Light the Fuse",
-    durationDays: 21,
-    totalLevels: 500,
-    tasksPerLevel: 1,
-    milestoneLevel: 10,
-    milestoneRewardType: "stars",
-    milestoneRewardAmount: 100,
-    passActivated: localStorage.getItem("season_6_pass_activated") === "true"
-  };
-}
-
-function savePassConfig(config) {
-  try {
-    localStorage.setItem(PASS_CONFIG_STORAGE_KEY, JSON.stringify(config));
-    if (config.passActivated !== undefined) {
-      localStorage.setItem("season_6_pass_activated", config.passActivated ? "true" : "false");
-    }
-    localStorage.setItem(SYNC_FLAG_KEY, Date.now().toString());
-    try {
-      const bc = new BroadcastChannel('nova_task_sync');
-      bc.postMessage({ type: 'PASS_CONFIG_UPDATED', config, timestamp: Date.now() });
-      bc.close();
-    } catch(e) {}
-  } catch(e) {
-    console.error('Error saving pass config:', e);
-  }
-}
-
-function switchAdminEventTab(tabKey) {
-  currentAdminEventTab = tabKey || 'pro';
-
-  const btnPro = document.getElementById('btnEventTabPro');
-  const btnPass = document.getElementById('btnEventTabPass');
-  const btnSeason = document.getElementById('btnEventTabSeason');
-
-  const panelPro = document.getElementById('adminEventPanelPro');
-  const panelPass = document.getElementById('adminEventPanelPass');
-  const panelSeason = document.getElementById('adminEventPanelSeason');
-
-  if (btnPro) btnPro.classList.toggle('active', currentAdminEventTab === 'pro');
-  if (btnPass) btnPass.classList.toggle('active', currentAdminEventTab === 'pass');
-  if (btnSeason) btnSeason.classList.toggle('active', currentAdminEventTab === 'season');
-
-  if (panelPro) panelPro.style.display = (currentAdminEventTab === 'pro') ? 'flex' : 'none';
-  if (panelPass) panelPass.style.display = (currentAdminEventTab === 'pass') ? 'flex' : 'none';
-  if (panelSeason) panelSeason.style.display = (currentAdminEventTab === 'season') ? 'block' : 'none';
-
-  if (currentAdminEventTab === 'pro') {
-    renderAdminProTasksPanel();
-  } else if (currentAdminEventTab === 'pass') {
-    renderAdminPassPanel();
-  } else if (currentAdminEventTab === 'season') {
-    renderAdminEventSection();
-  }
-}
-
-function renderAdminProTasksPanel() {
-  const settings = getStoredProEventSettings();
-  
-  const badge = document.getElementById('proEventStatusBadge');
-  const toggleBtn = document.getElementById('labelToggleProEvent');
-  if (badge) {
-    if (settings.active) {
-      badge.textContent = '● EVENT ACTIVE';
-      badge.style.background = 'rgba(16, 185, 129, 0.2)';
-      badge.style.color = '#34d399';
-      badge.style.borderColor = 'rgba(52, 211, 153, 0.5)';
-      if (toggleBtn) toggleBtn.textContent = 'Turn Off ⏸️';
-    } else {
-      badge.textContent = '○ EVENT OFF';
-      badge.style.background = 'rgba(239, 68, 68, 0.2)';
-      badge.style.color = '#f87171';
-      badge.style.borderColor = 'rgba(239, 68, 68, 0.5)';
-      if (toggleBtn) toggleBtn.textContent = 'Turn On ▶️';
-    }
-  }
-
-  const timerEl = document.getElementById('proDetailTimerText');
-  if (timerEl) timerEl.textContent = `⏱️ ${settings.durationHours || 48}H 00M`;
-
-  const costEl = document.getElementById('proDetailCostText');
-  if (costEl) costEl.textContent = `🪙 ${settings.packageCoinCost || 50} + 🎟️ ${settings.packageTicketCost || 2}`;
-
-  const tasks = settings.tasks || [];
-  const t1 = tasks[0] || { title: 'Mission 1: Promo Signup', rewardCoins: 500, url: 'https://youtube.com', verificationCode: '583921' };
-  const t2 = tasks[1] || { title: 'Mission 2: Community Join', rewardCoins: 250, url: 'https://telegram.org', verificationCode: '749201' };
-  const t3 = tasks[2] || { title: 'Mission 3: Survey Bonus', rewardCoins: 250, url: 'https://google.com', verificationCode: '382910' };
-
-  const totalBounty = (Number(t1.rewardCoins || t1.reward || 500)) + 
-                      (Number(t2.rewardCoins || t2.reward || 250)) + 
-                      (Number(t3.rewardCoins || t3.reward || 250));
-
-  const bountyEl = document.getElementById('proDetailBountyText');
-  if (bountyEl) bountyEl.textContent = `🪙 ${totalBounty.toLocaleString()}`;
-
-  const listContainer = document.getElementById('proTasksDetailList');
-  if (listContainer) {
-    listContainer.innerHTML = `
-      <!-- Sub-Task 1 Card -->
-      <div class="pro-subtask-card" style="border-left: 4px solid #facc15;">
-        <div class="pro-subtask-info">
-          <div class="pro-subtask-title-row">
-            <span class="pro-subtask-badge half-bounty">🎁 1 of 3 • Half Price Award (50%)</span>
-            <span style="font-weight: 800; color: #ffffff; font-size: 0.88rem;">${escapeHtml(t1.title)}</span>
-          </div>
-          <div style="font-size: 0.72rem; color: #94a3b8; display: flex; gap: 8px; align-items: center; margin-top: 4px; flex-wrap: wrap;">
-            <span>Reward: <b style="color: #fbbf24; font-size: 0.82rem;">🪙 ${t1.rewardCoins || t1.reward || 500} Coins</b> (Wins 50% = 500 Coins on this task!)</span>
-            <span>&bull;</span>
-            <span>Secret Code: <b style="color: #facc15; font-family: monospace;">${t1.verificationCode || t1.code || '583921'}</b></span>
-          </div>
-          <div style="font-size: 0.7rem; color: #38bdf8; margin-top: 3px; word-break: break-all;">
-            Target URL: <a href="${t1.url || t1.link || '#'}" target="_blank" style="color: #38bdf8; text-decoration: underline;">${t1.url || t1.link || 'https://youtube.com'}</a>
-          </div>
-        </div>
-        <div style="text-align: right; flex-shrink: 0;">
-          <span style="display: inline-block; padding: 2px 8px; border-radius: 4px; background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.3); font-size: 0.7rem; color: #7dd3fc; font-weight: 800;">
-            Task #1
-          </span>
-        </div>
-      </div>
-
-      <!-- Sub-Task 2 Card -->
-      <div class="pro-subtask-card" style="border-left: 4px solid #34d399;">
-        <div class="pro-subtask-info">
-          <div class="pro-subtask-title-row">
-            <span class="pro-subtask-badge">⚡ 2 of 3 • Mid Mission</span>
-            <span style="font-weight: 800; color: #ffffff; font-size: 0.88rem;">${escapeHtml(t2.title)}</span>
-          </div>
-          <div style="font-size: 0.72rem; color: #94a3b8; display: flex; gap: 8px; align-items: center; margin-top: 4px; flex-wrap: wrap;">
-            <span>Reward: <b style="color: #fbbf24; font-size: 0.82rem;">🪙 ${t2.rewardCoins || t2.reward || 250} Coins</b></span>
-            <span>&bull;</span>
-            <span>Secret Code: <b style="color: #facc15; font-family: monospace;">${t2.verificationCode || t2.code || '749201'}</b></span>
-          </div>
-          <div style="font-size: 0.7rem; color: #38bdf8; margin-top: 3px; word-break: break-all;">
-            Target URL: <a href="${t2.url || t2.link || '#'}" target="_blank" style="color: #38bdf8; text-decoration: underline;">${t2.url || t2.link || 'https://telegram.org'}</a>
-          </div>
-        </div>
-        <div style="text-align: right; flex-shrink: 0;">
-          <span style="display: inline-block; padding: 2px 8px; border-radius: 4px; background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.3); font-size: 0.7rem; color: #7dd3fc; font-weight: 800;">
-            Task #2
-          </span>
-        </div>
-      </div>
-
-      <!-- Sub-Task 3 Card -->
-      <div class="pro-subtask-card" style="border-left: 4px solid #a855f7;">
-        <div class="pro-subtask-info">
-          <div class="pro-subtask-title-row">
-            <span class="pro-subtask-badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc;">🏆 3 of 3 • Full Package Completion Bounty</span>
-            <span style="font-weight: 800; color: #ffffff; font-size: 0.88rem;">${escapeHtml(t3.title)}</span>
-          </div>
-          <div style="font-size: 0.72rem; color: #94a3b8; display: flex; gap: 8px; align-items: center; margin-top: 4px; flex-wrap: wrap;">
-            <span>Reward: <b style="color: #fbbf24; font-size: 0.82rem;">🪙 ${t3.rewardCoins || t3.reward || 250} Coins</b> (Wins Full Total Package Bounty!)</span>
-            <span>&bull;</span>
-            <span>Secret Code: <b style="color: #facc15; font-family: monospace;">${t3.verificationCode || t3.code || '382910'}</b></span>
-          </div>
-          <div style="font-size: 0.7rem; color: #38bdf8; margin-top: 3px; word-break: break-all;">
-            Target URL: <a href="${t3.url || t3.link || '#'}" target="_blank" style="color: #38bdf8; text-decoration: underline;">${t3.url || t3.link || 'https://google.com'}</a>
-          </div>
-        </div>
-        <div style="text-align: right; flex-shrink: 0;">
-          <span style="display: inline-block; padding: 2px 8px; border-radius: 4px; background: rgba(168, 85, 247, 0.2); border: 1px solid rgba(168, 85, 247, 0.4); font-size: 0.7rem; color: #c084fc; font-weight: 800;">
-            Task #3
-          </span>
-        </div>
-      </div>
-    `;
-  }
-}
-
-function toggleProEventActive() {
-  const settings = getStoredProEventSettings();
-  settings.active = !settings.active;
-  saveProEventSettings(settings);
-  renderAdminProTasksPanel();
-  showToast(settings.active ? '● Pro Event Activated!' : '○ Pro Event Turned Off!');
-}
-
-function openEditProTasksModal() {
-  const settings = getStoredProEventSettings();
-  const tasks = settings.tasks || [];
-  const t1 = tasks[0] || {};
-  const t2 = tasks[1] || {};
-  const t3 = tasks[2] || {};
-
-  const durEl = document.getElementById('editProEventDuration');
-  if (durEl) durEl.value = settings.durationHours || 48;
-  const coinCostEl = document.getElementById('editProPackageCoinCost');
-  if (coinCostEl) coinCostEl.value = settings.packageCoinCost || 50;
-  const ticketCostEl = document.getElementById('editProPackageTicketCost');
-  if (ticketCostEl) ticketCostEl.value = settings.packageTicketCost || 2;
-  const activeToggle = document.getElementById('editProEventActiveToggle');
-  if (activeToggle) activeToggle.checked = (settings.active !== false);
-
-  const t1Title = document.getElementById('editProTask1Title');
-  if (t1Title) t1Title.value = t1.title || 'Mission 1: Promo Signup';
-  const t1Price = document.getElementById('editProTask1Price');
-  if (t1Price) t1Price.value = t1.rewardCoins || t1.reward || 500;
-  const t1Url = document.getElementById('editProTask1Url');
-  if (t1Url) t1Url.value = t1.url || t1.link || 'https://youtube.com';
-  const t1Code = document.getElementById('editProTask1Code');
-  if (t1Code) t1Code.value = t1.verificationCode || t1.code || '583921';
-
-  const t2Title = document.getElementById('editProTask2Title');
-  if (t2Title) t2Title.value = t2.title || 'Mission 2: Community Join';
-  const t2Price = document.getElementById('editProTask2Price');
-  if (t2Price) t2Price.value = t2.rewardCoins || t2.reward || 250;
-  const t2Url = document.getElementById('editProTask2Url');
-  if (t2Url) t2Url.value = t2.url || t2.link || 'https://telegram.org';
-  const t2Code = document.getElementById('editProTask2Code');
-  if (t2Code) t2Code.value = t2.verificationCode || t2.code || '749201';
-
-  const t3Title = document.getElementById('editProTask3Title');
-  if (t3Title) t3Title.value = t3.title || 'Mission 3: Survey Bonus';
-  const t3Price = document.getElementById('editProTask3Price');
-  if (t3Price) t3Price.value = t3.rewardCoins || t3.reward || 250;
-  const t3Url = document.getElementById('editProTask3Url');
-  if (t3Url) t3Url.value = t3.url || t3.link || 'https://google.com';
-  const t3Code = document.getElementById('editProTask3Code');
-  if (t3Code) t3Code.value = t3.verificationCode || t3.code || '382910';
-
-  updateEditProBountyPreview();
-  const modal = document.getElementById('adminProTaskEditModalOverlay');
-  if (modal) modal.style.display = 'flex';
-}
-
-function closeEditProTasksModal() {
-  const modal = document.getElementById('adminProTaskEditModalOverlay');
-  if (modal) modal.style.display = 'none';
-}
-
-function updateEditProBountyPreview() {
-  const p1 = parseInt(document.getElementById('editProTask1Price')?.value || '500', 10) || 0;
-  const p2 = parseInt(document.getElementById('editProTask2Price')?.value || '250', 10) || 0;
-  const p3 = parseInt(document.getElementById('editProTask3Price')?.value || '250', 10) || 0;
-  const total = p1 + p2 + p3;
-  const label = document.getElementById('editProTotalBountyPreview');
-  if (label) label.textContent = `Total: ${total.toLocaleString()} Coins`;
-}
-
-function handleSaveProTasksForm(e) {
-  if (e && e.preventDefault) e.preventDefault();
-
-  const durationHours = parseInt(document.getElementById('editProEventDuration')?.value || '48', 10);
-  const packageCoinCost = parseInt(document.getElementById('editProPackageCoinCost')?.value || '50', 10);
-  const packageTicketCost = parseInt(document.getElementById('editProPackageTicketCost')?.value || '2', 10);
-  const isActive = document.getElementById('editProEventActiveToggle')?.checked ?? true;
-
-  const t1 = {
-    id: "task_pro_1",
-    title: document.getElementById('editProTask1Title')?.value.trim() || 'Mission 1: Promo Signup',
-    category: "pro",
-    rewardCoins: parseInt(document.getElementById('editProTask1Price')?.value || '500', 10),
-    reward: parseInt(document.getElementById('editProTask1Price')?.value || '500', 10),
-    coins: parseInt(document.getElementById('editProTask1Price')?.value || '500', 10),
-    url: document.getElementById('editProTask1Url')?.value.trim() || 'https://youtube.com',
-    link: document.getElementById('editProTask1Url')?.value.trim() || 'https://youtube.com',
-    verificationCode: document.getElementById('editProTask1Code')?.value.trim() || '583921',
-    code: document.getElementById('editProTask1Code')?.value.trim() || '583921',
-    secretCode: document.getElementById('editProTask1Code')?.value.trim() || '583921',
-    description: "First mission of 3-task package (Half price awarded here!)",
-    isPackagePart: true,
-    packagePartIndex: 1,
-    active: isActive
-  };
-
-  const t2 = {
-    id: "task_pro_2",
-    title: document.getElementById('editProTask2Title')?.value.trim() || 'Mission 2: Community Join',
-    category: "pro",
-    rewardCoins: parseInt(document.getElementById('editProTask2Price')?.value || '250', 10),
-    reward: parseInt(document.getElementById('editProTask2Price')?.value || '250', 10),
-    coins: parseInt(document.getElementById('editProTask2Price')?.value || '250', 10),
-    url: document.getElementById('editProTask2Url')?.value.trim() || 'https://telegram.org',
-    link: document.getElementById('editProTask2Url')?.value.trim() || 'https://telegram.org',
-    verificationCode: document.getElementById('editProTask2Code')?.value.trim() || '749201',
-    code: document.getElementById('editProTask2Code')?.value.trim() || '749201',
-    secretCode: document.getElementById('editProTask2Code')?.value.trim() || '749201',
-    description: "Second mission of 3-task package",
-    isPackagePart: true,
-    packagePartIndex: 2,
-    active: isActive
-  };
-
-  const t3 = {
-    id: "task_pro_3",
-    title: document.getElementById('editProTask3Title')?.value.trim() || 'Mission 3: Survey Bonus',
-    category: "pro",
-    rewardCoins: parseInt(document.getElementById('editProTask3Price')?.value || '250', 10),
-    reward: parseInt(document.getElementById('editProTask3Price')?.value || '250', 10),
-    coins: parseInt(document.getElementById('editProTask3Price')?.value || '250', 10),
-    url: document.getElementById('editProTask3Url')?.value.trim() || 'https://google.com',
-    link: document.getElementById('editProTask3Url')?.value.trim() || 'https://google.com',
-    verificationCode: document.getElementById('editProTask3Code')?.value.trim() || '382910',
-    code: document.getElementById('editProTask3Code')?.value.trim() || '382910',
-    secretCode: document.getElementById('editProTask3Code')?.value.trim() || '382910',
-    description: "Third mission of 3-task package (Full package completion bounty!)",
-    isPackagePart: true,
-    packagePartIndex: 3,
-    active: isActive
-  };
-
-  const settings = {
-    active: isActive,
-    durationHours,
-    packageCoinCost,
-    packageTicketCost,
-    startTime: Date.now(),
-    endTime: Date.now() + durationHours * 3600000,
-    tasks: [t1, t2, t3]
-  };
-
-  saveProEventSettings(settings);
-  closeEditProTasksModal();
-  renderAdminProTasksPanel();
-  showToast('💎 Pro Tasks & 3-Task Pack updated successfully! ✓');
-}
-
-function renderAdminPassPanel() {
-  const config = getStoredPassConfig();
-
-  const titleEl = document.getElementById('passDetailSeasonTitle');
-  if (titleEl) titleEl.textContent = config.seasonName || 'Season 6: Light the Fuse';
-
-  const badgeEl = document.getElementById('passStatusBadge');
-  const toggleBtn = document.getElementById('labelTogglePassAdmin');
-  if (badgeEl) {
-    if (config.passActivated) {
-      badgeEl.textContent = '⚡ PASS ACTIVE';
-      badgeEl.style.background = 'rgba(250, 204, 21, 0.2)';
-      badgeEl.style.color = '#facc15';
-      badgeEl.style.borderColor = 'rgba(250, 204, 21, 0.5)';
-      if (toggleBtn) toggleBtn.textContent = 'Free Only 🔄';
-    } else {
-      badgeEl.textContent = '○ FREE TRACK ONLY';
-      badgeEl.style.background = 'rgba(56, 189, 248, 0.2)';
-      badgeEl.style.color = '#38bdf8';
-      badgeEl.style.borderColor = 'rgba(56, 189, 248, 0.4)';
-      if (toggleBtn) toggleBtn.textContent = 'Activate Pass ⚡';
-    }
-  }
-
-  const tiersEl = document.getElementById('passDetailTotalLevels');
-  if (tiersEl) tiersEl.textContent = `${config.totalLevels || 500} Levels`;
-
-  const rewardEl = document.getElementById('passDetailMilestoneReward');
-  if (rewardEl) {
-    const symbol = config.milestoneRewardType === 'coins' ? '🪙' : (config.milestoneRewardType === 'tickets' ? '🎟️' : '⭐');
-    rewardEl.textContent = `${symbol} ${config.milestoneRewardAmount || 100} ${config.milestoneRewardType || 'Stars'}`;
-  }
-
-  const playerLvlEl = document.getElementById('passDetailPlayerLevel');
-  if (playerLvlEl) {
-    const pLvl = localStorage.getItem('task_pass_level') || '0';
-    playerLvlEl.textContent = `Level ${pLvl}`;
-  }
-
-  // Populate Season Timer Tool Inputs (Start Time and End Time)
-  const startTime = parseInt(localStorage.getItem('season_pass_start_timestamp') || (Date.now() - 86400000).toString(), 10);
-  const startInput = document.getElementById('adminSeasonStartTimeInput');
-  if (startInput && !startInput.value) {
-    const d = new Date(startTime);
-    const pad = n => n.toString().padStart(2, '0');
-    startInput.value = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  }
-
-  const endTime = getStoredSeasonPassEndTime();
-  const input = document.getElementById('adminSeasonEndTimeInput');
-  if (input && !input.value) {
-    const d = new Date(endTime);
-    const pad = n => n.toString().padStart(2, '0');
-    input.value = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  }
-  updateAdminSeasonCountdownDisplay();
-
-  const milestonesContainer = document.getElementById('passMilestonesPreviewGrid');
-  if (milestonesContainer) {
-    const currentLvl = parseInt(localStorage.getItem('task_pass_level') || '0', 10);
-    const milestones = [
-      { lvl: 2, reward: '🎟️ 5 Tickets' },
-      { lvl: 3, reward: '🪙 1,000 Coins' },
-      { lvl: 4, reward: '🎟️ 5 Tickets' },
-      { lvl: 5, reward: '🪙 1,000 Coins' },
-      { lvl: 6, reward: '🎟️ 5 Tickets' },
-      { lvl: 10, reward: `⭐ ${config.milestoneRewardAmount || 100} Stars (Goal)` },
-      { lvl: 50, reward: '⭐ 200 Stars (Milestone)' },
-      { lvl: 100, reward: '⭐ 325 Stars (Milestone)' },
-      { lvl: 500, reward: '⭐ 1,325 Stars (Max Milestone)' }
-    ];
-
-    milestonesContainer.innerHTML = milestones.map(m => {
-      let statusHtml = '';
-      let borderStyle = 'border: 1px solid rgba(56, 189, 248, 0.25);';
-      if (m.lvl < currentLvl) {
-        statusHtml = '<span style="font-size: 0.65rem; color: #34d399; font-weight: 800;">✓ Won</span>';
-        borderStyle = 'border: 1.5px solid rgba(52, 211, 153, 0.5); background: rgba(16, 185, 129, 0.1);';
-      } else if (m.lvl === currentLvl) {
-        statusHtml = '<span style="font-size: 0.65rem; color: #38bdf8; font-weight: 800;">🎯 Active Target</span>';
-        borderStyle = 'border: 2px solid #38bdf8; background: rgba(14, 165, 233, 0.15); box-shadow: 0 0 12px rgba(56, 189, 248, 0.35);';
-      } else {
-        statusHtml = '<span style="font-size: 0.65rem; color: #94a3b8; font-weight: 700;">🔒 Locked</span>';
-      }
-      return `
-        <div class="pass-milestone-card" style="${borderStyle}">
-          <div style="font-weight: 900; color: #ffffff; font-size: 0.85rem; margin-bottom: 2px;">Level ${m.lvl}</div>
-          <div style="font-size: 0.75rem; color: #fde047; font-weight: 800; margin-bottom: 4px;">${m.reward}</div>
-          ${statusHtml}
-        </div>
-      `;
-    }).join('');
-  }
-}
-
-function getStoredSeasonPassEndTime() {
-  const stored = localStorage.getItem('season_pass_end_timestamp');
-  if (stored) {
-    const val = parseInt(stored, 10);
-    if (!isNaN(val) && val > Date.now()) return val;
-  }
-  const defaultEnd = Date.now() + 21 * 86400000; // 21 days default
-  localStorage.setItem('season_pass_end_timestamp', defaultEnd.toString());
-  return defaultEnd;
-}
-
-function formatSeasonCountdown(ms) {
-  if (ms <= 0) return 'Season Ended';
-  const totalSec = Math.floor(ms / 1000);
-  const d = Math.floor(totalSec / 86400);
-  const h = Math.floor((totalSec % 86400) / 3600);
-  const m = Math.floor((totalSec % 3600) / 60);
-  const s = totalSec % 60;
-  return `${d}d ${h.toString().padStart(2, '0')}h ${m.toString().padStart(2, '0')}m ${s.toString().padStart(2, '0')}s`;
-}
-
-function updateAdminSeasonCountdownDisplay() {
-  const endTime = getStoredSeasonPassEndTime();
-  const diff = endTime - Date.now();
-  const formatted = formatSeasonCountdown(diff);
-  const liveEl = document.getElementById('passDetailLiveCountdown');
-  if (liveEl) liveEl.textContent = `⏱️ ${formatted}`;
-  const badgeEl = document.getElementById('adminLiveSeasonCountdownBadge');
-  if (badgeEl) badgeEl.textContent = formatted;
-}
-
-setInterval(updateAdminSeasonCountdownDisplay, 1000);
-
-function applyAdminQuickDays(days) {
-  const d = parseInt(days, 10);
-  if (!d || d < 1) return;
-  const targetDate = new Date(Date.now() + d * 86400000);
-  const input = document.getElementById('adminSeasonEndTimeInput');
-  if (input) {
-    const pad = n => n.toString().padStart(2, '0');
-    input.value = `${targetDate.getFullYear()}-${pad(targetDate.getMonth()+1)}-${pad(targetDate.getDate())}T${pad(targetDate.getHours())}:${pad(targetDate.getMinutes())}`;
-  }
-}
-window.applyAdminQuickDays = applyAdminQuickDays;
-
-function saveAdminSeasonTimer() {
-  const startInput = document.getElementById('adminSeasonStartTimeInput');
-  let startTimestamp = Date.now();
-  if (startInput && startInput.value) {
-    startTimestamp = new Date(startInput.value).getTime();
-  }
-  localStorage.setItem('season_pass_start_timestamp', startTimestamp.toString());
-
-  const input = document.getElementById('adminSeasonEndTimeInput');
-  let targetTimestamp = 0;
-  if (input && input.value) {
-    targetTimestamp = new Date(input.value).getTime();
-  }
-  if (!targetTimestamp || isNaN(targetTimestamp) || targetTimestamp <= Date.now()) {
-    const quickDays = parseInt(document.getElementById('adminSeasonQuickDays')?.value || '21', 10);
-    targetTimestamp = Date.now() + Math.max(1, quickDays) * 86400000;
-  }
-
-  localStorage.setItem('season_pass_end_timestamp', targetTimestamp.toString());
-  
-  const config = getStoredPassConfig();
-  config.durationDays = Math.ceil((targetTimestamp - Date.now()) / 86400000);
-  config.seasonStartTime = startTimestamp;
-  config.seasonEndTime = targetTimestamp;
-  savePassConfig(config);
-
-  try {
-    const syncChannel = new BroadcastChannel('nova_task_sync');
-    syncChannel.postMessage({ type: 'SEASON_TIMER_UPDATED', seasonStartTime: startTimestamp, seasonEndTime: targetTimestamp, timestamp: Date.now() });
-    syncChannel.close();
-  } catch(e) {}
-
-  if (window.firebaseSync && typeof window.firebaseSync.database === 'object') {
-    try {
-      window.firebaseSync.database.ref('season_pass_settings').set({
-        seasonStartTime: startTimestamp,
-        seasonEndTime: targetTimestamp,
-        durationDays: config.durationDays,
-        updatedAt: Date.now()
-      });
-    } catch(e) {}
-  }
-
-  updateAdminSeasonCountdownDisplay();
-  const statusEl = document.getElementById('adminSeasonTimerStatusMsg');
-  if (statusEl) {
-    statusEl.style.display = 'block';
-    statusEl.textContent = `✓ Season timer set! Ends in ${formatSeasonCountdown(targetTimestamp - Date.now())}`;
-    setTimeout(() => { if (statusEl) statusEl.style.display = 'none'; }, 4000);
-  }
-  showToast('⏱️ Season Pass Timer saved & synchronized! ✓');
-}
-window.saveAdminSeasonTimer = saveAdminSeasonTimer;
-window.getStoredSeasonPassEndTime = getStoredSeasonPassEndTime;
-
-function adminTogglePassActivation() {
-  const config = getStoredPassConfig();
-  config.passActivated = !config.passActivated;
-  savePassConfig(config);
-  renderAdminPassPanel();
-  showToast(config.passActivated ? '⚡ Pass Activated for all users!' : '○ Free Track mode active.');
-}
-
-function openEditPassSettingsModal() {
-  const config = getStoredPassConfig();
-  document.getElementById('editPassSeasonName').value = config.seasonName || 'Season 6: Light the Fuse';
-  document.getElementById('editPassDurationDays').value = config.durationDays || 21;
-  document.getElementById('editPassTotalLevels').value = config.totalLevels || 500;
-  document.getElementById('editPassTasksPerLevel').value = config.tasksPerLevel || 1;
-  document.getElementById('editPassMilestoneLevel').value = config.milestoneLevel || 10;
-  document.getElementById('editPassMilestoneType').value = config.milestoneRewardType || 'stars';
-  document.getElementById('editPassMilestoneAmount').value = config.milestoneRewardAmount || 100;
-  document.getElementById('editPassActivatedToggle').checked = (config.passActivated !== false);
-
-  const modal = document.getElementById('adminPassEditModalOverlay');
-  if (modal) modal.style.display = 'flex';
-}
-
-function closeEditPassSettingsModal() {
-  const modal = document.getElementById('adminPassEditModalOverlay');
-  if (modal) modal.style.display = 'none';
-}
-
-function handleSavePassSettingsForm(e) {
-  if (e && e.preventDefault) e.preventDefault();
-
-  const config = {
-    seasonName: document.getElementById('editPassSeasonName')?.value.trim() || 'Season 6: Light the Fuse',
-    durationDays: parseInt(document.getElementById('editPassDurationDays')?.value || '21', 10),
-    totalLevels: parseInt(document.getElementById('editPassTotalLevels')?.value || '500', 10),
-    tasksPerLevel: parseInt(document.getElementById('editPassTasksPerLevel')?.value || '1', 10),
-    milestoneLevel: parseInt(document.getElementById('editPassMilestoneLevel')?.value || '10', 10),
-    milestoneRewardType: document.getElementById('editPassMilestoneType')?.value || 'stars',
-    milestoneRewardAmount: parseInt(document.getElementById('editPassMilestoneAmount')?.value || '100', 10),
-    passActivated: document.getElementById('editPassActivatedToggle')?.checked ?? true
-  };
-
-  savePassConfig(config);
-  closeEditPassSettingsModal();
-  renderAdminPassPanel();
-  showToast('🎫 Pass settings updated and synced across all user screens! ✓');
-}
-
-window.switchAdminEventTab = switchAdminEventTab;
-window.renderAdminProTasksPanel = renderAdminProTasksPanel;
-window.renderAdminPassPanel = renderAdminPassPanel;
-window.toggleProEventActive = toggleProEventActive;
-window.openEditProTasksModal = openEditProTasksModal;
-window.closeEditProTasksModal = closeEditProTasksModal;
-window.updateEditProBountyPreview = updateEditProBountyPreview;
-window.handleSaveProTasksForm = handleSaveProTasksForm;
-window.adminTogglePassActivation = adminTogglePassActivation;
-window.openEditPassSettingsModal = openEditPassSettingsModal;
-window.closeEditPassSettingsModal = closeEditPassSettingsModal;
-window.handleSavePassSettingsForm = handleSavePassSettingsForm;
-
-// =============================================================================
-// ADMIN GLOBAL LIMITS, VIP STAR PLAN, PROGRESSIVE DAILY & EVENT LEVELS EDITOR
-// =============================================================================
-
-let _adminVipPlansDraft = null;
-let _adminUltraMilestonesDraft = null;
-
-function renderAdminVipPlansEditor() {
-  const container = document.getElementById('adminVipPlansList');
-  if (!container) return;
-
-  if (!_adminVipPlansDraft) {
-    const s = (window.TapEmpireUtils && window.TapEmpireUtils.getAppSettings()) || {};
-    const plans = Array.isArray(s.vipPlans) && s.vipPlans.length > 0 ? s.vipPlans : [
-      { id: 'vip_500', title: 'VIP Silver Pass', costStars: 500, dailyTasksLimit: 5, durationDays: 7, enabled: true, restrictions: '500 Stars for 5 Star Tasks/day (7 Days).' },
-      { id: 'vip_1000', title: 'VIP Gold Pass', costStars: 1000, dailyTasksLimit: 10, durationDays: 30, enabled: true, restrictions: '1,000 Stars for 10 Star Tasks/day (30 Days).' },
-      { id: 'vip_5000', title: 'VIP Diamond Pass', costStars: 5000, dailyTasksLimit: 30, durationDays: 90, enabled: true, restrictions: '5,000 Stars for 30 Star Tasks/day (90 Days).' }
-    ];
-    _adminVipPlansDraft = plans.map(p => ({ ...p }));
-  }
-
-  container.innerHTML = _adminVipPlansDraft.map((p, idx) => `
-    <div style="background:rgba(2,6,23,0.72);border:1px solid rgba(168,85,247,0.35);border-radius:10px;padding:0.55rem;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;gap:6px;">
-        <span style="font-size:0.74rem;font-weight:900;color:#fde047;">Plan ${idx + 1}: ${escapeHtml(p.title || 'VIP Pass')}</span>
-        <label style="font-size:0.68rem;color:#cbd5e1;display:flex;align-items:center;gap:4px;">
-          <input type="checkbox" ${p.enabled !== false ? 'checked' : ''} onchange="updateVipPlanField(${idx}, 'enabled', this.checked)"> Active
-        </label>
-      </div>
-      <div style="display:grid;grid-template-columns:1.2fr 0.9fr 0.8fr 0.8fr;gap:5px;margin-bottom:4px;">
-        <div><label style="font-size:0.62rem;color:#94a3b8;">Plan Title</label><input type="text" class="admin-form-input" value="${escapeHtml(p.title || '')}" onchange="updateVipPlanField(${idx}, 'title', this.value)" style="font-size:0.72rem;padding:4px 6px;"></div>
-        <div><label style="font-size:0.62rem;color:#94a3b8;">Stars ⭐</label><input type="number" min="1" data-vip-plan-cost="${escapeHtml(p.id)}" class="admin-form-input" value="${Number(p.costStars || 500)}" onchange="updateVipPlanField(${idx}, 'costStars', Number(this.value))" style="font-size:0.72rem;padding:4px 6px;color:#fbbf24;"></div>
-        <div><label style="font-size:0.62rem;color:#94a3b8;">Tasks/Day</label><input type="number" min="1" class="admin-form-input" value="${Number(p.dailyTasksLimit || 5)}" onchange="updateVipPlanField(${idx}, 'dailyTasksLimit', Number(this.value))" style="font-size:0.72rem;padding:4px 6px;"></div>
-        <div><label style="font-size:0.62rem;color:#94a3b8;">Days</label><input type="number" min="1" class="admin-form-input" value="${Number(p.durationDays || 7)}" onchange="updateVipPlanField(${idx}, 'durationDays', Number(this.value))" style="font-size:0.72rem;padding:4px 6px;"></div>
-      </div>
-      <input type="text" class="admin-form-input" value="${escapeHtml(p.restrictions || '')}" placeholder="Restrictions / Details note" onchange="updateVipPlanField(${idx}, 'restrictions', this.value)" style="font-size:0.7rem;padding:4px 6px;">
-    </div>
-  `).join('');
-}
-
-function updateVipPlanField(idx, field, val) {
-  if (!_adminVipPlansDraft || !_adminVipPlansDraft[idx]) return;
-  _adminVipPlansDraft[idx][field] = val;
-}
-window.renderAdminVipPlansEditor = renderAdminVipPlansEditor;
-window.updateVipPlanField = updateVipPlanField;
-
-function renderAdminUltraMilestonesEditor() {
-  const container = document.getElementById('adminUltraMilestonesList');
-  if (!container) return;
-
-  if (!_adminUltraMilestonesDraft) {
-    const s = (window.TapEmpireUtils && window.TapEmpireUtils.getAppSettings()) || {};
-    const ms = s.walletOffers && Array.isArray(s.walletOffers.ultraMilestones) ? s.walletOffers.ultraMilestones : [];
-    _adminUltraMilestonesDraft = ms.map(m => ({ ...m }));
-  }
-
-  if (_adminUltraMilestonesDraft.length === 0) {
-    container.innerHTML = `<div style="text-align:center;padding:0.75rem;color:#94a3b8;font-size:0.74rem;">No Ultra milestones configured. Click "＋ Add Milestone" above.</div>`;
-    return;
-  }
-
-  container.innerHTML = _adminUltraMilestonesDraft.map((m, idx) => `
-    <div style="background:rgba(2,6,23,0.72);border:1px solid rgba(250,204,21,0.3);border-radius:10px;padding:0.55rem;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;gap:6px;">
-        <span style="font-size:0.74rem;font-weight:900;color:#fde047;">Milestone ${idx + 1}</span>
-        <div style="display:flex;align-items:center;gap:8px;">
-          <label style="font-size:0.68rem;color:#cbd5e1;display:flex;align-items:center;gap:4px;">
-            <input type="checkbox" ${m.enabled !== false ? 'checked' : ''} onchange="updateUltraMilestoneField(${idx}, 'enabled', this.checked)"> Active
-          </label>
-          <button type="button" onclick="deleteAdminUltraMilestone(${idx})" style="padding:2px 6px;border-radius:6px;border:1px solid rgba(239,68,68,0.45);background:rgba(239,68,68,0.15);color:#f87171;font-size:0.66rem;font-weight:800;cursor:pointer;">Delete</button>
-        </div>
-      </div>
-      <div style="display:grid;grid-template-columns:1.5fr 0.8fr;gap:5px;margin-bottom:5px;">
-        <div><label style="font-size:0.62rem;color:#94a3b8;">Gift Card Title</label><input type="text" class="admin-form-input" value="${escapeHtml(m.title || '')}" onchange="updateUltraMilestoneField(${idx}, 'title', this.value)" style="font-size:0.72rem;padding:4px 6px;"></div>
-        <div><label style="font-size:0.62rem;color:#94a3b8;">Gift Value ₹</label><input type="number" min="1" class="admin-form-input" value="${Number(m.giftAmountInr || 1000)}" onchange="updateUltraMilestoneField(${idx}, 'giftAmountInr', Number(this.value))" style="font-size:0.72rem;padding:4px 6px;color:#34d399;"></div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;">
-        <div><label style="font-size:0.62rem;color:#94a3b8;">Req Ultra</label><input type="number" min="1" class="admin-form-input" value="${Number(m.requiredUltraTasks || 100)}" onchange="updateUltraMilestoneField(${idx}, 'requiredUltraTasks', Number(this.value))" style="font-size:0.72rem;padding:4px 6px;"></div>
-        <div><label style="font-size:0.62rem;color:#94a3b8;">Deduct Credits</label><input type="number" min="0" class="admin-form-input" value="${Number(m.deductUltraTasks !== undefined ? m.deductUltraTasks : (m.requiredUltraTasks || 100))}" onchange="updateUltraMilestoneField(${idx}, 'deductUltraTasks', Number(this.value))" style="font-size:0.72rem;padding:4px 6px;"></div>
-        <div><label style="font-size:0.62rem;color:#94a3b8;">Star Cost ⭐</label><input type="number" min="0" class="admin-form-input" value="${Number(m.starCost || 0)}" onchange="updateUltraMilestoneField(${idx}, 'starCost', Number(this.value))" style="font-size:0.72rem;padding:4px 6px;color:#fbbf24;"></div>
-      </div>
-    </div>
-  `).join('');
-}
-
-function updateUltraMilestoneField(idx, field, val) {
-  if (!_adminUltraMilestonesDraft || !_adminUltraMilestonesDraft[idx]) return;
-  _adminUltraMilestonesDraft[idx][field] = val;
-}
-
-function addAdminUltraMilestone() {
-  if (!_adminUltraMilestonesDraft) _adminUltraMilestonesDraft = [];
-  const nextReq = (_adminUltraMilestonesDraft.length + 1) * 100;
-  _adminUltraMilestonesDraft.push({
-    id: `ultra_ms_${Date.now()}_${_adminUltraMilestonesDraft.length + 1}`,
-    title: `₹${(nextReq * 10).toLocaleString()} Amazon Shopping Voucher`,
-    requiredUltraTasks: nextReq,
-    deductUltraTasks: nextReq,
-    giftAmountInr: nextReq * 10,
-    starCost: 0,
-    enabled: true
-  });
-  renderAdminUltraMilestonesEditor();
-}
-
-function deleteAdminUltraMilestone(idx) {
-  if (!_adminUltraMilestonesDraft) return;
-  _adminUltraMilestonesDraft.splice(idx, 1);
-  renderAdminUltraMilestonesEditor();
-}
-
-window.renderAdminUltraMilestonesEditor = renderAdminUltraMilestonesEditor;
-window.updateUltraMilestoneField = updateUltraMilestoneField;
-window.addAdminUltraMilestone = addAdminUltraMilestone;
-window.deleteAdminUltraMilestone = deleteAdminUltraMilestone;
-
-function loadAdminAppSettingsUI() {
-  const s = (window.TapEmpireUtils && typeof window.TapEmpireUtils.getAppSettings === 'function')
-    ? window.TapEmpireUtils.getAppSettings()
-    : null;
-  if (!s) return;
-
-  const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = String(val); };
-  const setChk = (id, val) => { const el = document.getElementById(id); if (el) el.checked = !!val; };
-
-  setVal('cfgLimitCommon', s.categoryLimits.common ?? 10);
-  setVal('cfgLimitCoin', s.categoryLimits.simple ?? 10);
-  setVal('cfgLimitStar', s.categoryLimits.star ?? 10);
-  setVal('cfgLimitPro', s.categoryLimits.pro ?? 3);
-  setVal('cfgLimitUltra', s.categoryLimits.ultra ?? 5);
-  setVal('cfgLimitQuiz', s.categoryLimits.quiz ?? 30);
-
-  _adminVipPlansDraft = null;
-  renderAdminVipPlansEditor();
-
-  setVal('cfgProgFreeDay', s.dailyProgression.freeTasksPerDay ?? 10);
-  setVal('cfgProgInc', s.dailyProgression.dailyIncrement ?? 10);
-  setVal('cfgProgAdExtra', s.dailyProgression.adExtraTaskCount ?? 5);
-  setChk('cfgProgAllowAd', s.dailyProgression.allowAdExtraTasks !== false);
-
-  setVal('cfgProGroupCost', s.proGroup.costAmount ?? 5000);
-  setVal('cfgProGroupCurrency', s.proGroup.costCurrency || 'coins');
-  setVal('cfgProTimerMin', s.proGroup.timerMinutes ?? 1440);
-
-  const oto = (s.walletOffers && s.walletOffers.oneTimeOffer) || {};
-  setVal('cfgOtoTitle', oto.title || '₹50 Amazon Shopping Voucher');
-  setVal('cfgOtoInr', oto.giftAmountInr ?? 50);
-  setVal('cfgOtoStars', oto.starCost ?? 1500);
-  setVal('cfgOtoReqUltra', oto.requiredUltraTasks ?? 30);
-  setVal('cfgOtoDeductUltra', oto.deductUltraTasks ?? 30);
-  setVal('cfgOtoHours', oto.timerHours ?? 48);
-  setChk('cfgOtoEnabled', oto.enabled !== false);
-  const endInput = document.getElementById('cfgOtoEndDateTime');
-  if (endInput && oto.countdownEndMs && Number(oto.countdownEndMs) > 0) {
-    const dt = new Date(Number(oto.countdownEndMs));
-    const localIso = new Date(dt.getTime() - dt.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-    endInput.value = localIso;
-  }
-
-  _adminUltraMilestonesDraft = null;
-  renderAdminUltraMilestonesEditor();
-}
-
-async function handleSaveAdminAppSettings(e) {
-  if (e && e.preventDefault) e.preventDefault();
-  const btn = document.getElementById('btnSaveAdminAppSettings');
-  const msgEl = document.getElementById('adminAppSettingsMsg');
-  const getNum = (id, def) => {
-    const v = parseInt(document.getElementById(id)?.value || '', 10);
-    return isNaN(v) ? def : v;
-  };
-
-  const otoEndRaw = document.getElementById('cfgOtoEndDateTime')?.value || '';
-  const otoEndMs = otoEndRaw ? new Date(otoEndRaw).getTime() : 0;
-
-  const primaryVip = Array.isArray(_adminVipPlansDraft)
-    ? (_adminVipPlansDraft.find(p => p.id === 'vip_1000') || _adminVipPlansDraft[1] || _adminVipPlansDraft[0])
-    : null;
-
-  const payload = {
-    categoryLimits: {
-      common: Math.max(1, getNum('cfgLimitCommon', 10)),
-      simple: Math.max(1, getNum('cfgLimitCoin', 10)),
-      star: Math.max(1, getNum('cfgLimitStar', 10)),
-      pro: Math.max(1, getNum('cfgLimitPro', 3)),
-      ultra: Math.max(1, getNum('cfgLimitUltra', 5)),
-      quiz: Math.max(1, getNum('cfgLimitQuiz', 30))
-    },
-    vipPlan: primaryVip ? {
-      costStars: Math.max(1, parseInt(primaryVip.costStars || 1000, 10) || 1000),
-      dailyTasksLimit: Math.max(1, parseInt(primaryVip.dailyTasksLimit || 10, 10) || 10),
-      durationDays: Math.max(1, parseInt(primaryVip.durationDays || 30, 10) || 30),
-      restrictions: primaryVip.restrictions || '',
-      enabled: primaryVip.enabled !== false
-    } : undefined,
-    vipPlans: Array.isArray(_adminVipPlansDraft) ? _adminVipPlansDraft.map(p => ({ ...p })) : undefined,
-    dailyProgression: {
-      freeTasksPerDay: Math.max(1, getNum('cfgProgFreeDay', 10)),
-      dailyIncrement: Math.max(0, getNum('cfgProgInc', 10)),
-      adExtraTaskCount: Math.max(0, getNum('cfgProgAdExtra', 5)),
-      allowAdExtraTasks: document.getElementById('cfgProgAllowAd')?.checked !== false
-    },
-    proGroup: {
-      costAmount: Math.max(0, getNum('cfgProGroupCost', 5000)),
-      costCurrency: document.getElementById('cfgProGroupCurrency')?.value || 'coins',
-      timerMinutes: Math.max(1, getNum('cfgProTimerMin', 1440)),
-      dailyLimit: Math.max(1, getNum('cfgLimitPro', 3)),
-      active: true
-    },
-    walletOffers: {
-      oneTimeOffer: {
-        title: document.getElementById('cfgOtoTitle')?.value.trim() || '₹50 Amazon Shopping Voucher',
-        giftAmountInr: Math.max(1, getNum('cfgOtoInr', 50)),
-        starCost: Math.max(0, getNum('cfgOtoStars', 1500)),
-        requiredUltraTasks: Math.max(0, getNum('cfgOtoReqUltra', 30)),
-        deductUltraTasks: Math.max(0, getNum('cfgOtoDeductUltra', 30)),
-        timerHours: Math.max(1, getNum('cfgOtoHours', 48)),
-        countdownEndMs: (otoEndMs && !isNaN(otoEndMs)) ? otoEndMs : 0,
-        enabled: document.getElementById('cfgOtoEnabled')?.checked !== false
-      },
-      ultraMilestones: Array.isArray(_adminUltraMilestonesDraft) ? _adminUltraMilestonesDraft.map(m => ({ ...m })) : undefined
-    }
-  };
-
-  if (btn) btn.disabled = true;
-  try {
-    if (window.TapEmpireUtils && typeof window.TapEmpireUtils.saveAppSettingsToCloud === 'function') {
-      await window.TapEmpireUtils.saveAppSettingsToCloud(payload);
-    }
-    if (msgEl) {
-      msgEl.style.display = 'block';
-      msgEl.style.color = '#34d399';
-      msgEl.textContent = '✓ Limits, VIP Star Plan & Pro settings saved to Firebase!';
-    }
-    showToast('✓ All App Settings saved & synced to Firebase!');
-  } catch (err) {
-    if (msgEl) {
-      msgEl.style.display = 'block';
-      msgEl.style.color = '#f87171';
-      msgEl.textContent = '❌ Failed to save settings.';
-    }
-  } finally {
-    if (btn) btn.disabled = false;
-  }
-}
-
-let _adminEventLevelsDraft = null;
-
-function renderAdminEventLevelsEditor() {
-  const container = document.getElementById('adminEventLevelsList');
-  if (!container) return;
-
-  if (!_adminEventLevelsDraft) {
-    const s = (window.TapEmpireUtils && window.TapEmpireUtils.getAppSettings()) || { eventLevels: [] };
-    _adminEventLevelsDraft = Array.isArray(s.eventLevels) ? s.eventLevels.map(l => ({ ...l })) : [];
-  }
-
-  if (_adminEventLevelsDraft.length === 0) {
-    container.innerHTML = `<div style="text-align:center;padding:1rem;color:#94a3b8;font-size:0.78rem;">No event levels configured. Click "＋ Add Level" to create one.</div>`;
-    return;
-  }
-
-  container.innerHTML = _adminEventLevelsDraft.map((lvl, idx) => `
-    <div style="background:rgba(2,6,23,0.75);border:1px solid rgba(56,189,248,0.28);border-radius:10px;padding:0.65rem;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:6px;">
-        <span style="font-weight:900;font-size:0.8rem;color:#38bdf8;">Level ${idx + 1}</span>
-        <div style="display:flex;align-items:center;gap:8px;">
-          <label style="font-size:0.7rem;color:#cbd5e1;display:flex;align-items:center;gap:4px;">
-            <input type="checkbox" ${lvl.active !== false ? 'checked' : ''} onchange="updateEventLevelField(${idx}, 'active', this.checked)"> Active
-          </label>
-          <button type="button" onclick="deleteAdminEventLevel(${idx})" style="padding:2px 7px;border-radius:6px;border:1px solid rgba(239,68,68,0.45);background:rgba(239,68,68,0.15);color:#f87171;font-size:0.68rem;font-weight:800;cursor:pointer;">Delete</button>
-        </div>
-      </div>
-      <div style="display:grid;grid-template-columns:1.2fr 0.9fr 0.9fr;gap:6px;margin-bottom:6px;">
-        <div><label style="font-size:0.64rem;color:#94a3b8;">Name</label><input type="text" class="admin-form-input" value="${escapeHtml(lvl.title || ('Level ' + (idx + 1)))}" onchange="updateEventLevelField(${idx}, 'title', this.value)" style="font-size:0.75rem;padding:4px 6px;"></div>
-        <div><label style="font-size:0.64rem;color:#94a3b8;">Req Tasks</label><input type="number" min="0" class="admin-form-input" value="${Number(lvl.requirementTasks || 0)}" onchange="updateEventLevelField(${idx}, 'requirementTasks', Number(this.value))" style="font-size:0.75rem;padding:4px 6px;"></div>
-        <div><label style="font-size:0.64rem;color:#94a3b8;">Cost Curr</label>
-          <select class="admin-form-input" onchange="updateEventLevelField(${idx}, 'unlockCurrency', this.value)" style="font-size:0.72rem;padding:4px;">
-            <option value="coins" ${(lvl.unlockCurrency || 'coins') === 'coins' ? 'selected' : ''}>🪙 Coins</option>
-            <option value="tickets" ${lvl.unlockCurrency === 'tickets' ? 'selected' : ''}>🎟️ Tickets</option>
-            <option value="stars" ${lvl.unlockCurrency === 'stars' ? 'selected' : ''}>⭐ Stars</option>
-            <option value="diamonds" ${lvl.unlockCurrency === 'diamonds' ? 'selected' : ''}>💎 Diamonds</option>
-          </select>
-        </div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;">
-        <div><label style="font-size:0.64rem;color:#94a3b8;">Unlock Cost</label><input type="number" min="0" class="admin-form-input" value="${Number(lvl.unlockCost || 0)}" onchange="updateEventLevelField(${idx}, 'unlockCost', Number(this.value))" style="font-size:0.75rem;padding:4px 6px;"></div>
-        <div><label style="font-size:0.64rem;color:#94a3b8;">Reward 🪙</label><input type="number" min="0" class="admin-form-input" value="${Number(lvl.rewardCoins || 0)}" onchange="updateEventLevelField(${idx}, 'rewardCoins', Number(this.value))" style="font-size:0.75rem;padding:4px 6px;color:#fbbf24;"></div>
-        <div><label style="font-size:0.64rem;color:#94a3b8;">Reward ⭐</label><input type="number" min="0" class="admin-form-input" value="${Number(lvl.rewardStars || 0)}" onchange="updateEventLevelField(${idx}, 'rewardStars', Number(this.value))" style="font-size:0.75rem;padding:4px 6px;color:#fde047;"></div>
-      </div>
-    </div>
-  `).join('');
-}
-
-function updateEventLevelField(idx, field, val) {
-  if (!_adminEventLevelsDraft || !_adminEventLevelsDraft[idx]) return;
-  _adminEventLevelsDraft[idx][field] = val;
-}
-
-function addAdminEventLevel() {
-  if (!_adminEventLevelsDraft) _adminEventLevelsDraft = [];
-  const nextNum = _adminEventLevelsDraft.length + 1;
-  _adminEventLevelsDraft.push({
-    level: nextNum,
-    title: `Level ${nextNum}`,
-    requirementTasks: nextNum * 10,
-    rewardCoins: nextNum * 100,
-    rewardStars: nextNum * 20,
-    unlockCost: 0,
-    unlockCurrency: 'coins',
-    active: true
-  });
-  renderAdminEventLevelsEditor();
-}
-
-function deleteAdminEventLevel(idx) {
-  if (!_adminEventLevelsDraft) return;
-  _adminEventLevelsDraft.splice(idx, 1);
-  _adminEventLevelsDraft.forEach((l, i) => { l.level = i + 1; });
-  renderAdminEventLevelsEditor();
-}
-
-async function saveAdminEventLevels() {
-  if (!_adminEventLevelsDraft) return;
-  const cleaned = _adminEventLevelsDraft.map((l, i) => ({
-    ...l,
-    level: i + 1,
-    title: String(l.title || `Level ${i + 1}`).trim()
-  }));
-  if (window.TapEmpireUtils && typeof window.TapEmpireUtils.saveAppSettingsToCloud === 'function') {
-    await window.TapEmpireUtils.saveAppSettingsToCloud({ eventLevels: cleaned });
-  }
-  _adminEventLevelsDraft = cleaned;
-  renderAdminEventLevelsEditor();
-  showToast(`✓ Saved ${cleaned.length} Event Levels to Firebase!`);
-}
-
-window.loadAdminAppSettingsUI = loadAdminAppSettingsUI;
-window.handleSaveAdminAppSettings = handleSaveAdminAppSettings;
-window.renderAdminEventLevelsEditor = renderAdminEventLevelsEditor;
-window.updateEventLevelField = updateEventLevelField;
-window.addAdminEventLevel = addAdminEventLevel;
-window.deleteAdminEventLevel = deleteAdminEventLevel;
-window.saveAdminEventLevels = saveAdminEventLevels;
-
-// Hide level-selection field on Common, Pro, Ultra, and Quiz in legacy modal + initialize Settings & Event Levels
-document.addEventListener('DOMContentLoaded', () => {
-  loadAdminAppSettingsUI();
-  renderAdminEventLevelsEditor();
-  const catSel = document.getElementById('taskInputCategory');
-  const lvlGrp = document.getElementById('profileTaskLevelGroup');
-  if (catSel && lvlGrp) {
-    const syncLvlVisibility = () => {
-      const v = String(catSel.value || '').toLowerCase();
-      lvlGrp.style.display = ['common', 'pro', 'ultra', 'quiz'].includes(v) ? 'none' : '';
-    };
-    catSel.addEventListener('change', syncLvlVisibility);
-    syncLvlVisibility();
-  }
 });
-window.addEventListener('settings:changed', () => {
-  _adminEventLevelsDraft = null;
-  _adminUltraMilestonesDraft = null;
-  loadAdminAppSettingsUI();
-  renderAdminEventLevelsEditor();
-});
+
+
+// ============================================================================

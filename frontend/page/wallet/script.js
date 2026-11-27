@@ -48,15 +48,15 @@ function getWalletSettings() {
       title: '₹50 Amazon Shopping Voucher',
       giftAmountInr: 50,
       starCost: 1500,
-      requiredUltraTasks: 30,
-      deductUltraTasks: 30,
+      requiredUltraTasks: 3,
+      deductUltraTasks: 3,
       timerHours: 48,
       countdownEndMs: 0
     },
     ultraMilestones: [
-      { id: 'ultra_ms_100', title: '₹1,000 Amazon Shopping Voucher', requiredUltraTasks: 100, deductUltraTasks: 100, giftAmountInr: 1000, starCost: 10000, enabled: true },
-      { id: 'ultra_ms_500', title: '₹5,000 Amazon Shopping Voucher', requiredUltraTasks: 500, deductUltraTasks: 500, giftAmountInr: 5000, starCost: 50000, enabled: true },
-      { id: 'ultra_ms_1000', title: '₹10,000 Amazon Shopping Voucher', requiredUltraTasks: 1000, deductUltraTasks: 1000, giftAmountInr: 10000, starCost: 100000, enabled: true }
+      { id: 'ultra_ms_20', title: '₹1,000 Amazon Shopping Voucher', requiredUltraTasks: 20, deductUltraTasks: 20, giftAmountInr: 1000, starCost: 10000, enabled: true },
+      { id: 'ultra_ms_80', title: '₹5,000 Amazon Shopping Voucher', requiredUltraTasks: 80, deductUltraTasks: 80, giftAmountInr: 5000, starCost: 50000, enabled: true },
+      { id: 'ultra_ms_140', title: '₹10,000 Amazon Shopping Voucher', requiredUltraTasks: 140, deductUltraTasks: 140, giftAmountInr: 10000, starCost: 100000, enabled: true }
     ]
   };
 }
@@ -91,8 +91,8 @@ function getOneTimeOfferConfig() {
     title: '₹50 Amazon Shopping Voucher',
     giftAmountInr: 50,
     starCost: 1500,
-    requiredUltraTasks: 30,
-    deductUltraTasks: 30,
+    requiredUltraTasks: 3,
+    deductUltraTasks: 3,
     timerHours: 48,
     countdownEndMs: 0
   };
@@ -150,8 +150,17 @@ function updateWalletDisplays() {
   if (uTotalEl) uTotalEl.textContent = getUltraTotalCompleted().toLocaleString();
 
   const userAvatar = document.querySelector('.user-avatar');
-  const currentAvatar = localStorage.getItem('player_avatar') || '💰';
-  if (userAvatar && userAvatar.textContent !== currentAvatar) userAvatar.textContent = currentAvatar;
+  if (userAvatar) {
+    const rawAv = localStorage.getItem('player_avatar') || 'avatar-1.png';
+    if (typeof window.renderPlayerAvatarEl === 'function') {
+      window.renderPlayerAvatarEl(userAvatar, rawAv, 36);
+    } else {
+      const m = String(rawAv).match(/avatar-([1-8])\.png/i);
+      userAvatar.style.background = 'transparent';
+      userAvatar.style.border = 'none';
+      userAvatar.innerHTML = `<img src="../../assets/avatars/${m ? 'avatar-' + m[1] + '.png' : 'avatar-1.png'}" alt="Avatar" class="sticker-3d-avatar-img" style="width:36px;height:36px;object-fit:contain;display:block;" />`;
+    }
+  }
 
   const userName = document.querySelector('.user-name');
   const currentName = localStorage.getItem('player_username') || 'Player';
@@ -213,10 +222,24 @@ function checkOneTimeOfferClaimed() {
   const isClaimed = !!claimedMap.one_time_offer || localStorage.getItem('wallet_one_time_offer_claimed') === 'true';
   const credits = getUltraCredits();
   const stars = parseInt(localStorage.getItem('task_game_stars') || '0', 10) || 0;
-  const reqUltra = Math.max(0, parseInt(cfg.requiredUltraTasks ?? 30, 10) || 0);
+  const reqUltra = Math.max(0, parseInt(cfg.requiredUltraTasks ?? 3, 10) || 0);
   const deductUltra = Math.max(0, parseInt(cfg.deductUltraTasks ?? reqUltra, 10) || 0);
   const starCost = Math.max(0, parseInt(cfg.starCost ?? 1500, 10) || 0);
   const giftInr = Math.max(1, parseInt(cfg.giftAmountInr ?? 50, 10) || 50);
+
+  const tabOneTime = document.getElementById('tabWalletOneTime');
+  const viewOneTime = document.getElementById('walletViewOneTime');
+  if (isClaimed) {
+    if (tabOneTime) tabOneTime.style.display = 'none';
+    if (viewOneTime) {
+      const wasOpen = viewOneTime.style.display !== 'none';
+      viewOneTime.style.display = 'none';
+      if (wasOpen && typeof switchWalletTab === 'function') switchWalletTab('standard');
+    }
+    return;
+  } else {
+    if (tabOneTime) tabOneTime.style.display = '';
+  }
 
   const endMs = getOneTimeOfferDeadlineMs(cfg);
   const remMs = endMs - Date.now();
@@ -234,26 +257,21 @@ function checkOneTimeOfferClaimed() {
   if (starsEl) starsEl.textContent = starCost.toLocaleString();
   if (reqStrip) {
     const pct = reqUltra > 0 ? Math.min(100, Math.round((credits / reqUltra) * 100)) : 100;
-    reqStrip.innerHTML = isClaimed
-      ? `<span style="color:#34d399;">✅ One-Time Offer Claimed! Progress Reset • Remaining Credits: ${credits.toLocaleString()}</span>`
-      : `<span>⚡ Ultra Tasks: <b style="color:${credits >= reqUltra ? '#34d399' : '#fbbf24'};">${Math.min(credits, reqUltra)}/${reqUltra}</b> (${pct}%) &bull; Uses ${deductUltra} Credits</span>`;
+    reqStrip.innerHTML = `<span style="display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap;">${walletStickerHtml('sticker-bolt.png', 'Ultra')} Ultra Tasks: <b style="color:${credits >= reqUltra ? '#34d399' : '#fbbf24'};">${Math.min(credits, reqUltra)}/${reqUltra}</b> (${pct}%) &bull; Uses ${deductUltra} Credits</span>`;
   }
   if (cdBadge) {
-    cdBadge.textContent = cfg.enabled === false ? '⏸️ Disabled' : (remMs <= 0 ? '⌛ Expired' : `⏱️ Ends in ${formatOfferTimer(remMs)}`);
+    cdBadge.innerHTML = cfg.enabled === false
+      ? `${walletStickerHtml('sticker-hourglass.png')} Disabled`
+      : (remMs <= 0 ? `${walletStickerHtml('sticker-hourglass.png')} Expired` : `${walletStickerHtml('sticker-timer.png')} Ends in ${formatOfferTimer(remMs)}`);
     cdBadge.style.color = isExpired ? '#f87171' : '#fbbf24';
   }
 
   if (btn) {
-    if (isClaimed) {
+    if (isExpired) {
       btn.disabled = true;
-      btn.innerHTML = '<span>Claimed ✓ (1-Time Only)</span>';
-      btn.style.background = '#334155';
-      btn.style.borderColor = '#475569';
-      btn.style.color = '#94a3b8';
-      btn.style.cursor = 'not-allowed';
-    } else if (isExpired) {
-      btn.disabled = true;
-      btn.innerHTML = cfg.enabled === false ? '<span>⏸️ Offer Paused</span>' : '<span>⌛ Offer Expired</span>';
+      btn.innerHTML = cfg.enabled === false
+        ? `${walletStickerHtml('sticker-hourglass.png')}<span>Offer Paused</span>`
+        : `${walletStickerHtml('sticker-hourglass.png')}<span>Offer Expired</span>`;
       btn.style.background = '#334155';
       btn.style.borderColor = '#475569';
       btn.style.color = '#f87171';
@@ -265,12 +283,16 @@ function checkOneTimeOfferClaimed() {
       btn.style.color = '';
       btn.style.cursor = 'pointer';
       btn.innerHTML = (credits >= reqUltra && stars >= starCost)
-        ? '<span>🔓 Unlock Request</span>'
-        : `<span>🔓 Unlock Request (${Math.min(credits, reqUltra)}/${reqUltra})</span>`;
+        ? `${walletStickerHtml('sticker-unlock.png')}<span>Unlock Request</span>`
+        : `${walletStickerHtml('sticker-unlock.png')}<span>Unlock Request (${Math.min(credits, reqUltra)}/${reqUltra})</span>`;
     }
   }
 }
 window.checkOneTimeOfferClaimed = checkOneTimeOfferClaimed;
+
+function walletStickerHtml(file, alt = '', cls = 'ui-3d-sticker-xs') {
+  return `<img src="../../assets/stickers/${file}" alt="${escapeHtml(alt)}" class="${cls}" />`;
+}
 
 function getVoucherImageForInr(inr) {
   const n = parseInt(inr, 10) || 1000;
@@ -293,20 +315,18 @@ function renderWalletUltraMilestones() {
 
   const credits = getUltraCredits();
   const currentStars = parseInt(localStorage.getItem('task_game_stars') || '0', 10) || 0;
-  const claimedMap = getClaimedWalletOffersMap();
 
   container.innerHTML = list.map(m => {
     const id = String(m.id || `ultra_ms_${m.requiredUltraTasks}`);
-    const req = Math.max(1, parseInt(m.requiredUltraTasks || 100, 10) || 100);
+    const req = Math.max(1, parseInt(m.requiredUltraTasks || 20, 10) || 20);
     const deduct = Math.max(0, parseInt(m.deductUltraTasks !== undefined ? m.deductUltraTasks : req, 10) || 0);
     const gift = Math.max(1, parseInt(m.giftAmountInr || 1000, 10) || 1000);
     const starCost = Math.max(0, parseInt(m.starCost || 0, 10) || 0);
-    const isClaimed = !!claimedMap[id];
-    const shownProg = isClaimed ? 0 : Math.min(credits, req);
+    const shownProg = Math.min(credits, req);
     const pct = Math.min(100, Math.round((shownProg / req) * 100));
     const hasCredits = credits >= req && credits >= deduct;
     const hasStars = currentStars >= starCost;
-    const canUnlock = !isClaimed && hasCredits && hasStars;
+    const canUnlock = hasCredits && hasStars;
     const imgPath = getVoucherImageForInr(gift);
     const safeTitle = escapeHtml(m.title || `₹${gift.toLocaleString()} Amazon Shopping Voucher`);
 
@@ -317,11 +337,15 @@ function renderWalletUltraMilestones() {
         </div>
         <div class="giftcard-content">
           <div class="giftcard-meta">
-            <span class="giftcard-brand" style="color: #fde047;">⚡ ULTRA OFFER • ${req.toLocaleString()} CREDITS${starCost > 0 ? ` + ${starCost.toLocaleString()} ⭐` : ''}</span>
+            <span class="giftcard-brand wallet-brand-row" style="color: #fde047;">
+              ${walletStickerHtml('sticker-bolt.png')}
+              <span>ULTRA OFFER • ${req.toLocaleString()} CREDITS${starCost > 0 ? ` + ${starCost.toLocaleString()}` : ''}</span>
+              ${starCost > 0 ? walletStickerHtml('sticker-star.png') : ''}
+            </span>
             <h3 class="giftcard-name">${safeTitle}</h3>
             <div style="margin-top:5px;">
               <div style="display:flex;justify-content:space-between;font-size:0.68rem;font-weight:800;color:#cbd5e1;margin-bottom:3px;">
-                <span>${isClaimed ? 'Claimed ✓' : `Credits: ${shownProg.toLocaleString()} / ${req.toLocaleString()}`}</span>
+                <span>Credits: ${shownProg.toLocaleString()} / ${req.toLocaleString()}</span>
                 <span style="color:#38bdf8;">Uses ${deduct.toLocaleString()} Credits</span>
               </div>
               <div style="height:7px;background:rgba(15,23,42,0.9);border-radius:999px;overflow:hidden;border:1px solid rgba(250,204,21,0.3);">
@@ -331,13 +355,11 @@ function renderWalletUltraMilestones() {
           </div>
           <div class="giftcard-actions-bar">
             <div class="giftcard-price">
-              <span class="price-star">${starCost > 0 ? '⭐' : '⚡'}</span>
+              <span class="price-star">${walletStickerHtml(starCost > 0 ? 'sticker-star.png' : 'sticker-bolt.png', '', 'ui-3d-sticker-sm')}</span>
               <span class="price-val">${starCost > 0 ? starCost.toLocaleString() : deduct.toLocaleString()}</span>
               <span class="price-unit">${starCost > 0 ? `Stars + ${deduct} Credits` : 'Credits'}</span>
             </div>
-            ${isClaimed
-              ? `<button class="btn-buy-giftcard" disabled style="background:#334155;color:#94a3b8;cursor:not-allowed;"><span>✓ Requested</span></button>`
-              : `<button class="btn-buy-giftcard" data-claim-milestone="${escapeHtml(id)}" onclick='openConfiguredMilestoneOffer(${JSON.stringify(id)})' style="${canUnlock ? 'background:linear-gradient(135deg,#f59e0b,#d97706);color:#1e1b4b;' : ''}"><span>🔓 Unlock Request</span></button>`}
+            <button class="btn-buy-giftcard" data-claim-milestone="${escapeHtml(id)}" onclick='openConfiguredMilestoneOffer(${JSON.stringify(id)})' style="${canUnlock ? 'background:linear-gradient(135deg,#f59e0b,#d97706);color:#1e1b4b;' : ''}">${walletStickerHtml('sticker-unlock.png')}<span>Unlock Request</span></button>
           </div>
         </div>
       </div>
@@ -420,7 +442,7 @@ function openBuyModal(rsAmount, starCost, title, imgPath, offerOpts) {
   const deductUltra = Math.max(0, parseInt(opts.deductUltra !== undefined ? opts.deductUltra : reqUltra, 10) || 0);
   const claimedMap = getClaimedWalletOffersMap();
 
-  if (offerKey && (claimedMap[offerKey] || (offerKey === 'one_time_offer' && localStorage.getItem('wallet_one_time_offer_claimed') === 'true'))) {
+  if (offerKey === 'one_time_offer' && (claimedMap.one_time_offer || localStorage.getItem('wallet_one_time_offer_claimed') === 'true')) {
     alert('This offer has already been claimed by your account (1-Time Only)!');
     return;
   }
@@ -480,9 +502,9 @@ function openBuyModal(rsAmount, starCost, title, imgPath, offerOpts) {
   const tasksBarEl = document.getElementById('buyReqTasksBar');
   const tasksSubEl = document.getElementById('buyReqTasksSub');
   if (tasksLabelEl) {
-    tasksLabelEl.textContent = useUltraGate
-      ? `⚡ Ultra Tasks Required (Deducts ${deductUltra} Credits)`
-      : '🌐 Web Tasks Completed';
+    tasksLabelEl.innerHTML = useUltraGate
+      ? `${walletStickerHtml('sticker-bolt.png')} <span>Ultra Tasks Required (Deducts ${deductUltra} Credits)</span>`
+      : `${walletStickerHtml('sticker-web.png')} <span>Web Tasks Completed</span>`;
   }
   if (tasksValEl) tasksValEl.textContent = `${completedCount} / ${requiredTasks} (${tasksPct}%)`;
   if (tasksBarEl) tasksBarEl.style.width = `${tasksPct}%`;
@@ -509,19 +531,19 @@ function openBuyModal(rsAmount, starCost, title, imgPath, offerOpts) {
   if (btnProceed) {
     if (canBuy) {
       btnProceed.disabled = false;
-      btnProceed.innerHTML = '<span>Unlock Request ➔</span>';
+      btnProceed.innerHTML = `${walletStickerHtml('sticker-unlock.png')}<span>Unlock Request ➔</span>`;
       btnProceed.style.opacity = '1';
       btnProceed.style.cursor = 'pointer';
       btnProceed.style.background = 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)';
     } else if (completedCount < requiredTasks || completedCount < deductUltra) {
       btnProceed.disabled = true;
-      btnProceed.innerHTML = `<span>🔒 Need ${Math.max(requiredTasks, deductUltra)} ${useUltraGate ? 'Ultra Credits' : 'Tasks'}</span>`;
+      btnProceed.innerHTML = `${walletStickerHtml('sticker-hourglass.png')}<span>Need ${Math.max(requiredTasks, deductUltra)} ${useUltraGate ? 'Ultra Credits' : 'Tasks'}</span>`;
       btnProceed.style.opacity = '0.5';
       btnProceed.style.cursor = 'not-allowed';
       btnProceed.style.background = '#334155';
     } else {
       btnProceed.disabled = true;
-      btnProceed.innerHTML = `<span>🔒 Need ${starCost.toLocaleString()} Stars</span>`;
+      btnProceed.innerHTML = `${walletStickerHtml('sticker-star.png')}<span>Need ${starCost.toLocaleString()} Stars</span>`;
       btnProceed.style.opacity = '0.5';
       btnProceed.style.cursor = 'not-allowed';
       btnProceed.style.background = '#334155';
@@ -601,9 +623,10 @@ async function handleConfirmBuy(event) {
     return;
   }
 
-  // Validate duplicate claim, Ultra Task credits, and Stars balance
+  // Only one_time_offer is 1-time locked; ultra_ms_* voucher requests are unlimited whenever user has credits
   const claimedMap = getClaimedWalletOffersMap();
-  if (offerKey && (claimedMap[offerKey] || (offerKey === 'one_time_offer' && localStorage.getItem('wallet_one_time_offer_claimed') === 'true'))) {
+  const isOneTimeOnly = offerKey === 'one_time_offer';
+  if (isOneTimeOnly && (claimedMap.one_time_offer || localStorage.getItem('wallet_one_time_offer_claimed') === 'true')) {
     if (submitBtn) { submitBtn.disabled = false; submitBtn.classList.remove('loading'); }
     alert('❌ This offer has already been claimed (1-Time Only).');
     return;
@@ -644,8 +667,8 @@ async function handleConfirmBuy(event) {
   if (window.__walletBuyBusy) return;
   window.__walletBuyBusy = true;
 
-  const txId = offerKey
-    ? `offer_unlock_${offerKey}`
+  const txId = isOneTimeOnly
+    ? 'offer_unlock_one_time_offer'
     : `wd_req_${Date.now()}_${rsAmount}_${Math.random().toString(36).slice(2, 6)}`;
 
   // Deduct stars + Ultra Task credits atomically in Firebase
@@ -653,7 +676,7 @@ async function handleConfirmBuy(event) {
     const res = await window.Firebase.atomicBalanceMutation({
       deltaStars: -starCost,
       deltaUltraCredits: -deductUltra,
-      claimOfferKey: offerKey || null,
+      claimOfferKey: isOneTimeOnly ? 'one_time_offer' : null,
       reason: `Voucher Order ₹${rsAmount}`,
       txId
     });
@@ -679,9 +702,10 @@ async function handleConfirmBuy(event) {
       const rem = Math.max(0, curCredits - deductUltra);
       localStorage.setItem('wallet_ultra_task_credits', String(rem));
     }
-    if (offerKey) {
-      const nextMap = { ...claimedMap, [offerKey]: Date.now() };
+    if (isOneTimeOnly) {
+      const nextMap = { ...claimedMap, one_time_offer: Date.now() };
       localStorage.setItem('wallet_claimed_offers', JSON.stringify(nextMap));
+      localStorage.setItem('wallet_one_time_offer_claimed', 'true');
     }
   }
 
@@ -881,17 +905,22 @@ function renderWalletOrders() {
   try {
     const rawWd = localStorage.getItem(WITHDRAW_STORAGE_KEY);
     const parsed = rawWd ? JSON.parse(rawWd) : [];
-    withdrawals = Array.isArray(parsed)
-      ? parsed.filter((w) => !w.userId || !myUid || String(w.userId) === String(myUid))
+    const cleaned = Array.isArray(parsed)
+      ? parsed.filter((w) => w && !w.isDemo && !String(w.id || '').toLowerCase().includes('demo') && !['WD-8491', 'WD-8490', 'WD-8489', 'WD-8488'].includes(w.id))
       : [];
+    if (Array.isArray(parsed) && cleaned.length !== parsed.length) {
+      localStorage.setItem(WITHDRAW_STORAGE_KEY, JSON.stringify(cleaned));
+    }
+    withdrawals = cleaned.filter((w) => !w.userId || !myUid || String(w.userId) === String(myUid));
   } catch (e) {
     withdrawals = [];
   }
 
   if (withdrawals.length === 0) {
     historyList.innerHTML = `
-      <div style="padding: 1.5rem 1rem; text-align: center; color: #64748b; font-size: 0.82rem;">
-        <span>🛍️ No recent transactions or unlock requests yet. Claim an Amazon voucher above once eligible!</span>
+      <div style="padding: 1.5rem 1rem; text-align: center; color: #64748b; font-size: 0.82rem; display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap;">
+        ${walletStickerHtml('sticker-bag.png', 'Orders', 'ui-3d-sticker-sm')}
+        <span>No recent transactions or unlock requests yet. Claim an Amazon voucher above once eligible!</span>
       </div>
     `;
     return;
@@ -900,47 +929,22 @@ function renderWalletOrders() {
   historyList.innerHTML = withdrawals.map(w => {
     const isApproved = w.status === 'approved';
     const isRejected = w.status === 'rejected';
-    const statusText = isApproved ? 'Approved ✅' : (isRejected ? 'Rejected ❌' : 'Pending Review ⏳');
-    const statusColor = isApproved ? '#10b981' : (isRejected ? '#ef4444' : '#f59e0b');
-    const statusBg = isApproved ? 'rgba(16, 185, 129, 0.15)' : (isRejected ? 'rgba(239, 68, 68, 0.15)' : 'rgba(245, 158, 11, 0.15)');
-    const deliveryStatus = String(w.deliveryStatus || (isRejected ? 'Rejected' : 'Processing (Up to 10 Days)'));
-    const isDelivered = /delivered/i.test(deliveryStatus);
-    const maskedContact = maskContactPreview(w.contactInfo || w.whatsapp || w.userEmail || w.userWhatsapp);
-
-    const targetUrl = (w.deliveryLink || w.link || w.rewardLink || '').trim();
-    let safeUrl = '';
-    if (targetUrl) {
-      safeUrl = (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) ? ('https://' + targetUrl) : targetUrl;
-    }
-
-    const linkButton = (isApproved && safeUrl) ? `
-      <div style="margin-top: 0.55rem;">
-        <a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #ffffff; border-radius: 8px; font-weight: 800; font-size: 0.78rem; text-decoration: none; box-shadow: 0 3px 8px rgba(16, 185, 129, 0.4); border: 1px solid #34d399; transition: transform 0.15s ease;" onmouseover="this.style.transform='scale(1.04)'" onmouseout="this.style.transform='scale(1)'">
-          <span>Open Link</span> <span>🔗</span>
-        </a>
-      </div>
-    ` : '';
+    const statusText = isApproved
+      ? `Approved ${walletStickerHtml('sticker-check.png')}`
+      : (isRejected ? `Rejected ${walletStickerHtml('sticker-cross.png')}` : `Pending ${walletStickerHtml('sticker-hourglass.png')}`);
+    const statusColor = isApproved ? '#34d399' : '#f87171';
+    const statusBg = isApproved ? 'rgba(16, 185, 129, 0.22)' : 'rgba(239, 68, 68, 0.16)';
+    const statusBorder = isApproved ? 'rgba(52, 211, 153, 0.55)' : 'rgba(248, 113, 113, 0.45)';
+    const rawMethod = String(w.method || 'Amazon Gift Card').trim();
+    const amt = Number(w.amount || 0);
+    const cleanTitle = (amt > 0 && !rawMethod.includes(String(amt))) ? `${rawMethod} (₹${amt.toLocaleString()})` : rawMethod;
 
     return `
-      <div class="history-item" style="display: flex; justify-content: space-between; align-items: flex-start; padding: 0.85rem 0.6rem; border-bottom: 1px solid rgba(255, 255, 255, 0.06);">
-        <div>
-          <div class="history-name" style="font-weight: 700; color: #fff; font-size: 0.88rem;">${escapeHtml(w.method || 'Amazon Voucher')}</div>
-          <div class="history-time" style="font-size: 0.7rem; color: #94a3b8; margin-top: 2px;">
-            ${escapeHtml(w.time || 'Recently')} • ID: #${escapeHtml(w.id || '')}${maskedContact ? ` • ${escapeHtml(maskedContact)}` : ''}
-          </div>
-          <div style="font-size: 0.68rem; font-weight: 700; color: ${isDelivered ? '#34d399' : (isRejected ? '#f87171' : '#fde68a')}; margin-top: 3px;">
-            🚚 Delivery: ${escapeHtml(deliveryStatus)}${!isDelivered && !isRejected ? ' • Delivery may take up to 10 days' : ''}
-          </div>
-          ${linkButton}
-        </div>
-        <div style="text-align: right;">
-          <span class="history-amount" style="font-weight: 800; color: #facc15; font-size: 0.95rem;">₹${Number(w.amount).toLocaleString()}</span>
-          <div style="margin-top: 4px;">
-            <span style="display: inline-block; font-size: 0.68rem; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: ${statusBg}; color: ${statusColor}; border: 1px solid ${statusColor}33;">
-              ${statusText}
-            </span>
-          </div>
-        </div>
+      <div class="history-item" style="display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 0.85rem 0.65rem; border-bottom: 1px solid rgba(255, 255, 255, 0.06);">
+        <div class="history-name" style="font-weight: 800; color: #ffffff; font-size: 0.9rem;">${escapeHtml(cleanTitle)}</div>
+        <span style="display: inline-flex; align-items: center; gap: 4px; font-size: 0.74rem; font-weight: 900; padding: 4px 12px; border-radius: 999px; background: ${statusBg}; color: ${statusColor}; border: 1.5px solid ${statusBorder}; white-space: nowrap;">
+          ${statusText}
+        </span>
       </div>
     `;
   }).join('');

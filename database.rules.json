@@ -1,0 +1,92 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "system": {
+      "admin_lock": {
+        ".read": "auth != null",
+        ".write": "auth != null && (data.child('active').val() !== true || (now - data.child('updatedAt').val()) > 120000 || data.child('holderAuthUid').val() === auth.uid)",
+        ".validate": "newData.hasChildren(['active', 'updatedAt']) && newData.child('active').isBoolean() && newData.child('updatedAt').isNumber() && (newData.child('active').val() === false || (newData.child('adminUser').val() === '400@kp' && newData.child('holderAuthUid').val() === auth.uid))"
+      },
+
+      "tasks_config": {
+        ".read": true,
+        ".write": "auth != null && root.child('system/admin_lock/active').val() === true && root.child('system/admin_lock/adminUser').val() === '400@kp' && root.child('system/admin_lock/holderAuthUid').val() === auth.uid && (now - root.child('system/admin_lock/updatedAt').val()) <= 180000",
+        ".validate": "newData.hasChild('updatedAt') && newData.child('updatedAt').isNumber()"
+      },
+
+      "app_settings": {
+        ".read": true,
+        ".write": "auth != null && root.child('system/admin_lock/active').val() === true && root.child('system/admin_lock/adminUser').val() === '400@kp' && root.child('system/admin_lock/holderAuthUid').val() === auth.uid && (now - root.child('system/admin_lock/updatedAt').val()) <= 180000",
+        ".validate": "newData.hasChild('updatedAt') && newData.child('updatedAt').isNumber()"
+      },
+
+      "leaderboard_event": {
+        ".read": true,
+        ".write": "auth != null && root.child('system/admin_lock/active').val() === true && root.child('system/admin_lock/adminUser').val() === '400@kp' && root.child('system/admin_lock/holderAuthUid').val() === auth.uid && (now - root.child('system/admin_lock/updatedAt').val()) <= 180000"
+      },
+
+      "ad_config": {
+        ".read": true,
+        ".write": "auth != null && root.child('system/admin_lock/active').val() === true && root.child('system/admin_lock/adminUser').val() === '400@kp' && root.child('system/admin_lock/holderAuthUid').val() === auth.uid && (now - root.child('system/admin_lock/updatedAt').val()) <= 180000"
+      },
+
+      "leaderboard_sessions": {
+        ".read": true,
+        ".write": "auth != null && root.child('system/admin_lock/active').val() === true && root.child('system/admin_lock/adminUser').val() === '400@kp' && root.child('system/admin_lock/holderAuthUid').val() === auth.uid && (now - root.child('system/admin_lock/updatedAt').val()) <= 180000"
+      }
+    },
+
+    "users": {
+      ".indexOn": ["updatedAt", "stars", "coins", "displayNameLower", "eventTasks"],
+      ".read": "auth != null",
+      "$uid": {
+        ".write": "auth != null && ((root.child('system/admin_lock/active').val() === true && root.child('system/admin_lock/holderAuthUid').val() === auth.uid) || $uid === auth.uid || !data.exists() || data.child('ownerAuthUid').val() === auth.uid || !data.hasChild('ownerAuthUid'))",
+        ".validate": "(!newData.exists()) || ((!newData.hasChild('coins') || (newData.child('coins').isNumber() && newData.child('coins').val() >= 0)) && (!newData.hasChild('stars') || (newData.child('stars').isNumber() && newData.child('stars').val() >= 0)) && (!newData.hasChild('tickets') || (newData.child('tickets').isNumber() && newData.child('tickets').val() >= 0)) && (!newData.hasChild('diamonds') || (newData.child('diamonds').isNumber() && newData.child('diamonds').val() >= 0)) && (!newData.hasChild('role') || newData.child('role').val() === 'player' || newData.child('role').val() === 'vip' || (root.child('system/admin_lock/active').val() === true && root.child('system/admin_lock/holderAuthUid').val() === auth.uid)))"
+      }
+    },
+
+    "players_data": {
+      "$uid": {
+        ".read": "auth != null && ($uid === auth.uid || root.child('system/admin_lock/holderAuthUid').val() === auth.uid)",
+        ".write": "auth != null && ((root.child('system/admin_lock/active').val() === true && root.child('system/admin_lock/holderAuthUid').val() === auth.uid) || $uid === auth.uid || !data.exists())"
+      }
+    },
+
+    "referral_codes": {
+      ".indexOn": ["userId"],
+      ".read": "auth != null",
+      "$code": {
+        ".write": "auth != null && (($code !== 'GLOBAL_TASKS' && $code !== 'GLOBAL_APP_SETTINGS' && $code !== 'LEADERBOARD_SESSIONS' && (!newData.hasChild('rewardCoins') || (newData.child('rewardCoins').isNumber() && newData.child('rewardCoins').val() >= 0 && newData.child('rewardCoins').val() <= 500))) || (root.child('system/admin_lock/active').val() === true && root.child('system/admin_lock/holderAuthUid').val() === auth.uid))"
+      }
+    },
+
+    "referral_redemptions": {
+      ".indexOn": ["redeemedByUserId", "code"],
+      ".read": "auth != null",
+      "$redId": {
+        ".write": "auth != null && (!data.exists() || (root.child('system/admin_lock/active').val() === true && root.child('system/admin_lock/holderAuthUid').val() === auth.uid))",
+        ".validate": "(!newData.exists()) || (newData.hasChildren(['code', 'redeemedByUserId', 'redeemedAt']) && newData.child('redeemedAt').isNumber() && (!newData.hasChild('rewardCoins') || newData.child('rewardCoins').val() <= 500))"
+      }
+    },
+
+    "withdrawals": {
+      ".indexOn": ["userId", "ownerAuthUid", "createdAt", "status"],
+      ".read": "auth != null && ((root.child('system/admin_lock/active').val() === true && root.child('system/admin_lock/holderAuthUid').val() === auth.uid) || (query.orderByChild === 'ownerAuthUid' && query.equalTo === auth.uid))",
+      "$wdId": {
+        ".read": "auth != null && ((root.child('system/admin_lock/active').val() === true && root.child('system/admin_lock/holderAuthUid').val() === auth.uid) || data.child('ownerAuthUid').val() === auth.uid || data.child('userId').val() === auth.uid)",
+        ".write": "auth != null && ((root.child('system/admin_lock/active').val() === true && root.child('system/admin_lock/holderAuthUid').val() === auth.uid) || (!data.exists() && newData.child('status').val() === 'pending' && newData.child('amount').isNumber() && newData.child('amount').val() > 0 && newData.hasChild('userId')))"
+      }
+    },
+
+    "feedbacks": {
+      ".indexOn": ["createdAt", "timestamp"],
+      ".read": "auth != null && root.child('system/admin_lock/active').val() === true && root.child('system/admin_lock/holderAuthUid').val() === auth.uid",
+      "$fbId": {
+        ".read": "auth != null && root.child('system/admin_lock/active').val() === true && root.child('system/admin_lock/holderAuthUid').val() === auth.uid",
+        ".write": "auth != null && ((root.child('system/admin_lock/active').val() === true && root.child('system/admin_lock/holderAuthUid').val() === auth.uid) || (!data.exists() && newData.hasChild('message') && newData.child('message').isString() && newData.child('message').val().length > 0))"
+      }
+    }
+  }
+}

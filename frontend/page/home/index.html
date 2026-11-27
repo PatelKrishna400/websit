@@ -68,7 +68,7 @@
     <!-- Top Header Bar -->
     <header class="home-header">
       <div class="header-user">
-        <div class="user-avatar">⚡</div>
+        <div class="user-avatar"><img src="../../assets/avatars/avatar-1.png" alt="Avatar" class="sticker-3d-avatar-img" style="width: 36px; height: 36px; object-fit: contain; display: block;" /></div>
         <div class="user-meta">
           <span class="user-name">Task Earner</span>
           <span class="user-level" id="userRankDisplay">RANK #1</span>
@@ -97,10 +97,10 @@
       <!-- Sticky Task Controls: Event Banner + Category Switcher Tabs Stay In Place On Scroll -->
       <div class="sticky-task-controls" id="stickyTaskControls">
 
-        <!-- Vertical Task Category Hub Cards (Common Tasks -> Coin Tasks -> Star Tasks -> Pro Tasks -> Ultra Tasks) -->
+        <!-- Vertical Task Category Hub Cards (Clean Tabs + Themed Art Backgrounds) -->
         <div class="task-category-hub" id="taskCategoryHub">
           
-          <!-- 1. Common Tasks Card (Light Blue) -->
+          <!-- 1. Common Tasks Card (Light Blue • White Smoke & Flying Tickets) -->
           <div class="task-hub-card hub-card-common" id="hubCardCommon" onclick="openTaskCategoryPage('common')" role="button" tabindex="0" title="Click to open Common Tasks">
             <div class="hub-card-left">
               <div class="hub-card-icon-wrap common-glow">
@@ -109,9 +109,7 @@
               <div class="hub-card-info">
                 <div class="hub-card-title-row">
                   <span class="hub-card-title">Common Tasks</span>
-                  <span class="hub-card-badge common-badge"><span id="commonTasksCount">0</span> Available</span>
                 </div>
-                <div class="hub-card-sub">Standard missions • Free entry • Win 50 Tickets &amp; Coins</div>
               </div>
             </div>
             <div class="hub-card-right">
@@ -119,7 +117,7 @@
             </div>
           </div>
 
-          <!-- 2. Coin Tasks Card (Deep Blue) -->
+          <!-- 2. Coin Tasks Card (Deep Blue • Coin Heap & Coin Chest Box) -->
           <div class="task-hub-card hub-card-coin" id="hubCardCoin" onclick="openTaskCategoryPage('simple')" role="button" tabindex="0" title="Click to open Coin Tasks">
             <div class="hub-card-left">
               <div class="hub-card-icon-wrap coin-glow">
@@ -128,9 +126,7 @@
               <div class="hub-card-info">
                 <div class="hub-card-title-row">
                   <span class="hub-card-title">Coin Tasks</span>
-                  <span class="hub-card-badge coin-badge"><span id="simpleTasksCount">0</span> Available</span>
                 </div>
-                <div class="hub-card-sub">Open missions with configurable unlock currency &amp; instant rewards</div>
               </div>
             </div>
             <div class="hub-card-right">
@@ -138,7 +134,7 @@
             </div>
           </div>
 
-          <!-- 3. Star Tasks Card (Below Common Tasks) -->
+          <!-- 3. Star Tasks Card (Purple • Star Heap & Star Chest Box) -->
           <div class="task-hub-card hub-card-star" id="hubCardStar" onclick="openTaskCategoryPage('premium')" role="button" tabindex="0" title="Click to open Star Tasks">
             <div class="hub-card-left">
               <div class="hub-card-icon-wrap star-glow">
@@ -147,18 +143,15 @@
               <div class="hub-card-info">
                 <div class="hub-card-title-row">
                   <span class="hub-card-title">Star Tasks</span>
-                  <span class="hub-card-badge star-badge"><span id="premiumTasksCount">0</span> VIP</span>
                 </div>
-                <div class="hub-card-sub">VIP High Bounty • Exclusive star missions &amp; rewards</div>
               </div>
             </div>
             <div class="hub-card-right">
-              <span class="hub-card-vip-pill" id="hubCardVipStatus">👑 VIP</span>
               <span class="hub-card-arrow star-arrow">Open ➜</span>
             </div>
           </div>
 
-          <!-- 4. Pro Tasks Card (Silver Themed) -->
+          <!-- 4. Pro Tasks Card (Silver Theme • Flying Stars with Silver Wave) -->
           <div class="task-hub-card hub-card-pro" id="hubCardPro" onclick="openTaskCategoryPage('pro')" role="button" tabindex="0" title="Click to open Pro Tasks">
             <div class="hub-card-left">
               <div class="hub-card-icon-wrap pro-glow">
@@ -167,18 +160,15 @@
               <div class="hub-card-info">
                 <div class="hub-card-title-row">
                   <span class="hub-card-title">Pro Tasks</span>
-                  <span class="hub-card-badge pro-badge"><span id="proTasksCount">0</span> Elite</span>
                 </div>
-                <div class="hub-card-sub">Limited-time event missions • Dual coin &amp; ticket unlock</div>
               </div>
             </div>
             <div class="hub-card-right">
-              <span class="hub-card-event-timer" id="hubProTimerBadge" style="background: rgba(203, 213, 225, 0.15); border: 1px solid rgba(203, 213, 225, 0.4); color: #f1f5f9; padding: 2px 7px; border-radius: 999px; font-size: 0.68rem; font-weight: 800;">⏱️ Event</span>
               <span class="hub-card-arrow pro-arrow">Open ➜</span>
             </div>
           </div>
 
-          <!-- 5. Ultra Tasks Card (Below Pro Tasks) -->
+          <!-- 5. Ultra Tasks Card (Golden Luxury Theme) -->
           <div class="task-hub-card hub-card-ultra" id="hubCardUltra" onclick="openTaskCategoryPage('ultra')" role="button" tabindex="0" title="Click to open Ultra Tasks">
             <div class="hub-card-left">
               <div class="hub-card-icon-wrap ultra-glow">
@@ -187,18 +177,15 @@
               <div class="hub-card-info">
                 <div class="hub-card-title-row">
                   <span class="hub-card-title">Ultra Tasks</span>
-                  <span class="hub-card-badge ultra-badge"><span id="ultraTasksCount">0</span> Ultra</span>
                 </div>
-                <div class="hub-card-sub">Mega bounties • High-value missions • Instant Coins &amp; Stars</div>
               </div>
             </div>
             <div class="hub-card-right">
-              <span class="hub-card-ultra-pill" id="hubUltraTimerBadge">⚡ ULTRA</span>
               <span class="hub-card-arrow ultra-arrow">Open ➜</span>
             </div>
           </div>
 
-          <!-- 6. Quiz Tasks Card (Emerald / Cyan Themed) -->
+          <!-- 6. Quiz Tasks Card (Emerald / Mint Brain Theme) -->
           <div class="task-hub-card hub-card-quiz" id="hubCardQuiz" onclick="openTaskCategoryPage('quiz')" role="button" tabindex="0" title="Click to open Quiz Tasks">
             <div class="hub-card-left">
               <div class="hub-card-icon-wrap quiz-glow">
@@ -207,14 +194,45 @@
               <div class="hub-card-info">
                 <div class="hub-card-title-row">
                   <span class="hub-card-title">Quiz Tasks</span>
-                  <span class="hub-card-badge quiz-badge"><span id="quizTasksCount">0</span> Quiz</span>
                 </div>
-                <div class="hub-card-sub">Open task links, enter code &amp; finish before timer ends • Daily limit 30</div>
               </div>
             </div>
             <div class="hub-card-right">
-              <span class="hub-card-quiz-pill" id="hubQuizTimerBadge">🧠 QUIZ</span>
               <span class="hub-card-arrow quiz-arrow">Open ➜</span>
+            </div>
+          </div>
+
+          <!-- 7. Diamond Tasks Card (White Diamonds Theme) -->
+          <div class="task-hub-card hub-card-diamond" id="hubCardDiamond" onclick="openTaskCategoryPage('diamond')" role="button" tabindex="0" title="Click to open Diamond Tasks">
+            <div class="hub-card-left">
+              <div class="hub-card-icon-wrap diamond-glow">
+                <span class="hub-card-icon">💎</span>
+              </div>
+              <div class="hub-card-info">
+                <div class="hub-card-title-row">
+                  <span class="hub-card-title">Diamond Tasks</span>
+                </div>
+              </div>
+            </div>
+            <div class="hub-card-right">
+              <span class="hub-card-arrow diamond-arrow">Open ➜</span>
+            </div>
+          </div>
+
+          <!-- 8. Google Form Tasks Card (Pink Diamonds Theme) -->
+          <div class="task-hub-card hub-card-google" id="hubCardGoogle" onclick="openTaskCategoryPage('google')" role="button" tabindex="0" title="Click to open Google Form Tasks">
+            <div class="hub-card-left">
+              <div class="hub-card-icon-wrap google-glow">
+                <span class="hub-card-icon">📝</span>
+              </div>
+              <div class="hub-card-info">
+                <div class="hub-card-title-row">
+                  <span class="hub-card-title">Google Form Tasks</span>
+                </div>
+              </div>
+            </div>
+            <div class="hub-card-right">
+              <span class="hub-card-arrow google-arrow">Open ➜</span>
             </div>
           </div>
 
@@ -230,11 +248,7 @@
       <!-- 1. Shop Page Link (Beside Leaderboard) -->
       <a href="../shop/index.html" class="below-menu-item" id="menuShop" title="Shop">
         <div class="menu-icon-wrap">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path>
-            <line x1="3" y1="6" x2="21" y2="6"></line>
-            <path d="M16 10a4 4 0 0 1-8 0"></path>
-          </svg>
+          <img src="../../assets/menu/nav-shop.png" alt="Shop" class="menu-3d-sticker" style="width: 32px; height: 32px; object-fit: contain; display: block; pointer-events: none;" />
         </div>
         <span class="menu-label">Shop</span>
       </a>
@@ -242,25 +256,15 @@
       <!-- 2. Leaderboard Page Link -->
       <a href="../leaderboard/index.html" class="below-menu-item" id="menuLeaderboard" title="Leaderboard">
         <div class="menu-icon-wrap">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path>
-            <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path>
-            <path d="M4 22h16"></path>
-            <path d="M10 14.66V17c0 .55-.45 1-1 1H7c-.55 0-1-.45-1-1v-2.34"></path>
-            <path d="M18 14.66V17c0 .55-.45 1-1 1h-2c-.55 0-1-.45-1-1v-2.34"></path>
-            <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"></path>
-          </svg>
+          <img src="../../assets/menu/nav-pass.png" alt="Pass" class="menu-3d-sticker" style="width: 32px; height: 32px; object-fit: contain; display: block; pointer-events: none;" />
         </div>
-        <span class="menu-label">Ranks</span>
+        <span class="menu-label">Pass</span>
       </a>
 
       <!-- 3. Home Page Link (Center Elevated) -->
       <a href="../home/index.html" class="below-menu-item center-home-btn active" id="menuHome" title="Home">
         <div class="center-home-icon-wrap">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-            <polyline points="9 22 9 12 15 12 15 22"></polyline>
-          </svg>
+          <img src="../../assets/menu/nav-home.png" alt="Home" class="menu-3d-sticker center-home-3d-sticker" style="width: 42px; height: 42px; object-fit: contain; display: block; pointer-events: none;" />
         </div>
         <span class="menu-label">Home</span>
       </a>
@@ -268,11 +272,7 @@
       <!-- 4. Wallet Page Link (Between Home and Profile) -->
       <a href="../wallet/index.html" class="below-menu-item" id="menuWallet" title="Wallet">
         <div class="menu-icon-wrap">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"></path>
-            <path d="M3 5v14a2 2 0 0 0 2 2h16v-5"></path>
-            <path d="M18 12a2 2 0 0 0 0 4h4v-4Z"></path>
-          </svg>
+          <img src="../../assets/menu/nav-wallet.png" alt="Wallet" class="menu-3d-sticker" style="width: 32px; height: 32px; object-fit: contain; display: block; pointer-events: none;" />
         </div>
         <span class="menu-label">Wallet</span>
       </a>
@@ -280,10 +280,7 @@
       <!-- 5. Profile Page Link -->
       <a href="../profile/index.html" class="below-menu-item" id="menuProfile" title="Profile">
         <div class="menu-icon-wrap">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path>
-            <circle cx="12" cy="7" r="4"></circle>
-          </svg>
+          <img src="../../assets/menu/nav-profile.png" alt="Profile" class="menu-3d-sticker" style="width: 32px; height: 32px; object-fit: contain; display: block; pointer-events: none;" />
         </div>
         <span class="menu-label">Profile</span>
       </a>
@@ -354,9 +351,9 @@
         <div class="verify-card-icon" id="verifyModalTaskIcon">⚡</div>
         <div class="verify-card-info">
           <div class="verify-card-title" id="verifyModalTaskTitle">Webtask Mission</div>
-          <div class="verify-card-sub" id="verifyModalTaskDesc">Visit link &amp; get code from admin</div>
+          <div class="verify-card-sub" id="verifyModalTaskDesc">Complete task timer &amp; enter 6-digit code</div>
         </div>
-        <a href="#" target="_blank" class="btn-verify-reopen-link" id="verifyModalLinkBtn" title="Re-open link in new tab">Open ↗</a>
+        <button type="button" class="btn-verify-reopen-link" id="verifyModalLinkBtn" style="display: none !important;" aria-hidden="true"></button>
       </div>
 
       <form class="verify-form" onsubmit="submitTaskVerification(event)">

@@ -663,9 +663,13 @@ function getActiveUsersList(sortMode = currentSortMode) {
     primaryUser.eventTasks = userEventTasks;
   }
 
-  // Persist combined users back to storage
+  // Persist compact top-150 summary without triggering localStorage quota overflows at 10,000+ users
   try {
-    localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
+    if (window.Firebase && typeof window.Firebase.cacheCompactUsersSummary === 'function') {
+      window.Firebase.cacheCompactUsersSummary(users);
+    } else {
+      localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users.slice(0, 150)));
+    }
   } catch (e) {}
 
   let activeOnly = users.filter(u => u && u.status !== 'suspended');
@@ -747,7 +751,10 @@ function renderRealLeaderboard() {
   currentRanksList = users;
 
   const myPlayerName = localStorage.getItem('player_username') || 'Player';
-  const myIndex = users.findIndex(u => u.id === 'usr_1' || u.name === myPlayerName);
+  const myUid = (window.Firebase && typeof window.Firebase.getEffectivePlayerUid === 'function')
+    ? window.Firebase.getEffectivePlayerUid()
+    : (localStorage.getItem('player_uid') || '');
+  const myIndex = users.findIndex(u => (myUid && (u.id === myUid || u.uid === myUid)) || u.id === 'usr_1' || (myPlayerName && myPlayerName !== 'Player' && u.name === myPlayerName));
   myCurrentRank = myIndex >= 0 ? myIndex + 1 : 0;
 
   // 4. RENDER TOP 3 PODIUM
@@ -1110,13 +1117,19 @@ window.handleSaveLeaderboardUser = function(e) {
       updateHeaderBalances();
     }
 
-    localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(raw));
-    localStorage.setItem(SYNC_FLAG_KEY, Date.now().toString());
+    try {
+      if (window.Firebase && typeof window.Firebase.cacheCompactUsersSummary === 'function') {
+        window.Firebase.cacheCompactUsersSummary(raw);
+      } else {
+        localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(raw.slice(0, 150)));
+      }
+      localStorage.setItem(SYNC_FLAG_KEY, Date.now().toString());
+    } catch (err) {}
 
-    // Broadcast across tabs
+    // Broadcast across tabs compactly
     try {
       const syncChannel = new BroadcastChannel(SYNC_CHANNEL_NAME);
-      syncChannel.postMessage({ type: 'USERS_UPDATED', users: raw, timestamp: Date.now() });
+      syncChannel.postMessage({ type: 'USERS_UPDATED', usersCount: raw.length, timestamp: Date.now() });
       syncChannel.postMessage({ type: 'BALANCES_UPDATED', timestamp: Date.now() });
       syncChannel.close();
     } catch(err) {}
@@ -1168,16 +1181,24 @@ window.addEventListener('storage', (e) => {
   }
 });
 
+let _leaderboardCloudUnsubUsers = null;
+let _leaderboardCloudUnsubEvent = null;
 function setupFirebaseCloudSync() {
-  if (window.Firebase && typeof window.Firebase.listenToCloudUsers === 'function') {
-    window.Firebase.listenToCloudUsers((cloudUsers) => {
+  if (window.Firebase && typeof window.Firebase.listenToLeaderboardFromCloud === 'function' && !_leaderboardCloudUnsubUsers) {
+    _leaderboardCloudUnsubUsers = window.Firebase.listenToLeaderboardFromCloud((cloudUsers) => {
+      if (Array.isArray(cloudUsers) && cloudUsers.length > 0) {
+        renderRealLeaderboard();
+      }
+    });
+  } else if (window.Firebase && typeof window.Firebase.listenToCloudUsers === 'function' && !_leaderboardCloudUnsubUsers) {
+    _leaderboardCloudUnsubUsers = window.Firebase.listenToCloudUsers((cloudUsers) => {
       if (Array.isArray(cloudUsers) && cloudUsers.length > 0) {
         renderRealLeaderboard();
       }
     });
   }
-  if (window.Firebase && typeof window.Firebase.listenToCloudLeaderboardEvent === 'function') {
-    window.Firebase.listenToCloudLeaderboardEvent((cloudEvent) => {
+  if (window.Firebase && typeof window.Firebase.listenToCloudLeaderboardEvent === 'function' && !_leaderboardCloudUnsubEvent) {
+    _leaderboardCloudUnsubEvent = window.Firebase.listenToCloudLeaderboardEvent((cloudEvent) => {
       if (cloudEvent && cloudEvent.status) {
         try {
           localStorage.setItem(EVENT_STORAGE_KEY, JSON.stringify(cloudEvent));
@@ -1420,12 +1441,16 @@ function updateSeasonModalData() {
 };
 
 
-window.handleClaimSeasonRankReward = function () {
+window.handleClaimSeasonRankReward = async function () {
   LeaderboardAudio.init();
-  const adsWatched = parseInt(localStorage.getItem(SEASON_ADS_KEY) || '0', 10);
   const userTotalTasks = parseInt(localStorage.getItem(TOTAL_TASKS_KEY) || '0', 10);
   const evt = getOrCreateLeaderboardEvent();
   const isFinished = evt.status === 'finished' || (evt.endTime && (evt.endTime - Date.now() <= 0));
+
+  if (localStorage.getItem(SEASON_CLAIMED_KEY) === 'true') {
+    alert('✅ Season Rank Reward has already been claimed.');
+    return;
+  }
 
   if (userTotalTasks < 100) {
     alert('🔒 Complete 100 Web Tasks first to qualify for Season 1 Participation.');
@@ -1444,16 +1469,30 @@ window.handleClaimSeasonRankReward = function () {
   }
 
   const coinReward = getRankCoinPrize(myRank);
-  let currentCoins = parseInt(localStorage.getItem('task_game_coins') || '0', 10);
-  currentCoins += coinReward;
-  userCoins = currentCoins;
-  localStorage.setItem('task_game_coins', currentCoins.toString());
-  localStorage.setItem('user_coins', currentCoins.toString());
-  localStorage.setItem(SEASON_CLAIMED_KEY, 'true');
+  const seasonTxId = `season_rank_reward_${evt.seasonId || 's1'}_r${myRank}`;
+  let currentCoins = parseInt(localStorage.getItem('task_game_coins') || '0', 10) || 0;
 
-  if (window.firebaseSync && typeof window.firebaseSync.addCoins === 'function') {
-    window.firebaseSync.addCoins(coinReward, 'Season Rank Reward');
+  if (window.Firebase && typeof window.Firebase.atomicBalanceMutation === 'function') {
+    const mut = await window.Firebase.atomicBalanceMutation({
+      deltaCoins: coinReward,
+      reason: `Season Rank #${myRank} Reward`,
+      txId: seasonTxId
+    });
+    if (!mut.ok) {
+      alert(`⚠️ ${mut.error || 'Could not claim rank reward.'}`);
+      return;
+    }
+    currentCoins = mut.coins;
+  } else if (window.firebaseSync && typeof window.firebaseSync.addCoins === 'function') {
+    currentCoins = window.firebaseSync.addCoins(coinReward, 'Season Rank Reward');
+  } else {
+    currentCoins += coinReward;
+    localStorage.setItem('task_game_coins', currentCoins.toString());
+    localStorage.setItem('user_coins', currentCoins.toString());
   }
+
+  userCoins = currentCoins;
+  localStorage.setItem(SEASON_CLAIMED_KEY, 'true');
 
   LeaderboardAudio.playEventRestart();
 

@@ -29,7 +29,7 @@
   function updateHomeHubCounters() {
     if (!window.TapEngine) return;
     const tasks = window.TapEngine.getStoredTasks();
-    const counts = { common: 0, simple: 0, star: 0, pro: 0, ultra: 0, quiz: 0 };
+    const counts = { common: 0, simple: 0, star: 0, pro: 0, ultra: 0, quiz: 0, diamond: 0, google: 0 };
     tasks.forEach(t => {
       const k = window.TapEngine.normalizeCategory(t.category, t);
       if (counts[k] !== undefined) counts[k]++;
@@ -45,12 +45,8 @@
     setTxt('proTasksCount', counts.pro);
     setTxt('ultraTasksCount', counts.ultra);
     setTxt('quizTasksCount', counts.quiz);
-
-    const vipStatusEl = document.getElementById('hubCardVipStatus');
-    const vip = window.TapEngine.getVipPlanState();
-    if (vipStatusEl) {
-      vipStatusEl.textContent = vip.active ? `👑 VIP (${vip.remainingToday}/${vip.dailyTasksLimit})` : `👑 ⭐${vip.costStars.toLocaleString()}`;
-    }
+    setTxt('diamondTasksCount', counts.diamond);
+    setTxt('googleTasksCount', counts.google);
 
     const proBadgeEl = document.getElementById('hubProTimerBadge');
     if (proBadgeEl) {
@@ -169,15 +165,30 @@
   window.addEventListener('firebase:ready', setupCloudListeners);
   window.addEventListener('balance:changed', updateCoinDisplay);
   window.addEventListener('settings:changed', renderTasks);
+  window.addEventListener('tasks:changed', renderTasks);
   window.addEventListener('storage', (e) => {
-    if (!e || ['task_game_tasks', 'tap_empire_app_settings', 'task_completed_tasks', 'task_unlocked_tasks', 'tap_empire_category_daily_counts', 'tap_empire_vip_plan'].includes(e.key)) {
+    if (!e || ['task_game_tasks', 'task_game_tasks_updated_at', 'tap_empire_app_settings', 'task_completed_tasks', 'task_unlocked_tasks', 'tap_empire_category_daily_counts', 'tap_empire_vip_plan'].includes(e.key)) {
       renderTasks();
     }
     updateCoinDisplay();
   });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) renderTasks();
+  });
   try {
     const ch = new BroadcastChannel('nova_task_sync');
-    ch.onmessage = () => renderTasks();
+    ch.onmessage = (ev) => {
+      const tp = ev && ev.data && ev.data.type;
+      if (!tp || tp === 'TASKS_UPDATED' || tp === 'TASKS_SYNCED' || tp === 'TASKS_RESTORED' || tp === 'SETTINGS_UPDATED') {
+        renderTasks();
+      } else {
+        updateCoinDisplay();
+      }
+    };
+  } catch (e) {}
+  try {
+    const bc = new BroadcastChannel('balance_sync_channel');
+    bc.onmessage = () => updateCoinDisplay();
   } catch (e) {}
 
   if (document.readyState === 'loading') {

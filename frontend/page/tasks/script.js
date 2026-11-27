@@ -9,14 +9,16 @@
   'use strict';
 
   const CATEGORY_HEADER_MAP = {
-    common: { title: 'Common Tasks', icon: '📋' },
+    common: { title: 'Common Tasks', icon: '🎟️' },
     simple: { title: 'Coin Tasks', icon: '🪙' },
     coin: { title: 'Coin Tasks', icon: '🪙' },
-    star: { title: 'Star VIP Tasks', icon: '⭐' },
-    premium: { title: 'Star VIP Tasks', icon: '⭐' },
+    star: { title: 'Star Tasks', icon: '⭐' },
+    premium: { title: 'Star Tasks', icon: '⭐' },
     pro: { title: 'Pro Tasks (3-Pack)', icon: '💎' },
     ultra: { title: 'Ultra Tasks', icon: '⚡' },
-    quiz: { title: 'Quiz Tasks', icon: '🧠' }
+    quiz: { title: 'Quiz Tasks', icon: '🧠' },
+    diamond: { title: 'Diamond Tasks', icon: '💎' },
+    google: { title: 'Google Form Tasks', icon: '📝' }
   };
 
   function resolveInitialCategory() {
@@ -25,7 +27,8 @@
     if (window.TapEngine) return window.TapEngine.normalizeCategory(raw);
     if (raw === 'coin') return 'simple';
     if (raw === 'premium') return 'star';
-    if (['common', 'simple', 'star', 'pro', 'ultra', 'quiz'].includes(raw)) return raw;
+    if (['google_form', 'google-form', 'googleform', 'form'].includes(raw)) return 'google';
+    if (['common', 'simple', 'star', 'pro', 'ultra', 'quiz', 'diamond', 'google'].includes(raw)) return raw;
     return 'common';
   }
 
@@ -49,10 +52,10 @@
       if (elD) elD.textContent = d.toLocaleString();
     }
 
-    // Diamond balance pill shown ONLY on Quiz Tasks page
+    // Diamond balance pill shown on Quiz, Diamond & Google Form Tasks pages
     const diamondPill = document.getElementById('diamondPill');
     if (diamondPill) {
-      diamondPill.style.display = activeCategory === 'quiz' ? 'flex' : 'none';
+      diamondPill.style.display = (activeCategory === 'quiz' || activeCategory === 'diamond' || activeCategory === 'google') ? 'flex' : 'none';
     }
 
     const titleEl = document.getElementById('pageCategoryTitle');
@@ -69,35 +72,8 @@
     const k = window.TapEngine ? window.TapEngine.normalizeCategory(catKey) : catKey;
     const shell = document.querySelector('.mobile-container');
     if (shell) {
-      ['common', 'simple', 'star', 'pro', 'ultra', 'quiz'].forEach(c => shell.classList.remove(`theme-${c}`));
+      ['common', 'simple', 'star', 'pro', 'ultra', 'quiz', 'diamond', 'google'].forEach(c => shell.classList.remove(`theme-${c}`));
       shell.classList.add(`theme-${k}`);
-    }
-
-    const tabs = document.querySelectorAll('#categoryTabs .tg-tab-btn');
-    tabs.forEach(btn => {
-      const btnCat = btn.getAttribute('data-cat');
-      ['active-common', 'active-simple', 'active-coin', 'active-star', 'active-pro', 'active-ultra', 'active-quiz'].forEach(cls => btn.classList.remove(cls));
-      if (btnCat === k) btn.classList.add(`active-${k}`);
-    });
-
-    if (window.TapEngine) {
-      const counts = { common: 0, simple: 0, star: 0, pro: 0, ultra: 0, quiz: 0 };
-      window.TapEngine.getStoredTasks().forEach(t => {
-        const tc = window.TapEngine.normalizeCategory(t.category, t);
-        if (counts[tc] !== undefined) counts[tc]++;
-      });
-      const mapIds = {
-        common: 'tabCountCommon',
-        simple: 'tabCountSimple',
-        star: 'tabCountStar',
-        pro: 'tabCountPro',
-        ultra: 'tabCountUltra',
-        quiz: 'tabCountQuiz'
-      };
-      Object.entries(mapIds).forEach(([key, id]) => {
-        const el = document.getElementById(id);
-        if (el) el.textContent = String(counts[key]);
-      });
     }
   }
 
@@ -106,7 +82,48 @@
     updateHUD();
     const listEl = document.getElementById('tasksList');
     const bannerEl = document.getElementById('catBannerContainer');
-    if (bannerEl) bannerEl.innerHTML = '';
+    if (bannerEl && window.TapEngine) {
+      const cat = window.TapEngine.normalizeCategory(activeCategory);
+      const meta = window.TapEngine.CATEGORY_META[cat] || window.TapEngine.CATEGORY_META.common;
+      const bannerClassMap = {
+        common: 'banner-common',
+        simple: 'banner-coin',
+        star: 'banner-star',
+        pro: 'banner-pro',
+        ultra: 'banner-ultra',
+        quiz: 'banner-quiz',
+        diamond: 'banner-diamond',
+        google: 'banner-google'
+      };
+      const bCls = bannerClassMap[cat] || 'banner-common';
+      let rightPillHtml = '';
+      if (cat === 'common') {
+        const prog = window.TapEngine.getDailyProgressionState ? window.TapEngine.getDailyProgressionState() : { dayNumber: 1, streakDays: 0 };
+        const tix = parseInt(localStorage.getItem('task_user_tickets') || localStorage.getItem('user_tickets') || '0', 10) || 0;
+        rightPillHtml = `<span class="cat-banner-stat-pill">🔥 Day ${prog.dayNumber} &bull; 🎟️ ${tix.toLocaleString()}</span>`;
+      } else if (cat === 'star') {
+        const sProg = window.TapEngine.getStarUnlockProgress
+          ? window.TapEngine.getStarUnlockProgress()
+          : { googleDone: 0, availableUnlocks: 0, globalReq: 2 };
+        rightPillHtml = `<span class="cat-banner-stat-pill">📝 ${sProg.googleDone} Google &bull; 🔓 ${sProg.availableUnlocks} Ready</span>`;
+      } else if (cat === 'diamond' || cat === 'google') {
+        const dm = parseInt(localStorage.getItem('task_user_diamonds') || localStorage.getItem('user_diamonds') || '0', 10) || 0;
+        rightPillHtml = `<span class="cat-banner-stat-pill">💎 ${dm.toLocaleString()} Diamonds</span>`;
+      } else {
+        const limitInfo = window.TapEngine.getCategoryLimitInfo ? window.TapEngine.getCategoryLimitInfo(cat) : { completedToday: 0, limit: 10 };
+        const maxLim = limitInfo.limit !== undefined ? limitInfo.limit : (limitInfo.dailyLimit !== undefined ? limitInfo.dailyLimit : 10);
+        rightPillHtml = `<span class="cat-banner-stat-pill">${meta.icon} ${limitInfo.completedToday}/${maxLim}</span>`;
+      }
+
+      bannerEl.innerHTML = `
+        <div class="cat-visual-banner ${bCls}" id="catVisualHeroBanner">
+          <div class="cat-banner-left">
+            <div class="cat-banner-icon">${meta.icon}</div>
+            <div class="cat-banner-title game-outline-sm">${meta.title}</div>
+          </div>
+          <div class="cat-banner-right">${rightPillHtml}</div>
+        </div>`;
+    }
     if (!listEl || !window.TapEngine) return;
     window.TapEngine.renderCategoryIntoContainer(listEl, activeCategory);
   }
@@ -133,22 +150,25 @@
     if (!container) return;
 
     const escapeH = (s) => String(s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-    const enabledPlans = plans.filter((p) => p && p.enabled !== false);
-    if (enabledPlans.length === 0) {
-      container.innerHTML = `<div style="padding:1rem;text-align:center;color:#94a3b8;font-size:0.8rem;">All VIP Plans are currently disabled by Admin.</div>`;
+    const showPlans = plans.slice(0, 3);
+    if (showPlans.length === 0) {
+      container.innerHTML = `<div style="padding:1rem;text-align:center;color:#94a3b8;font-size:0.8rem;">No VIP Plans available right now.</div>`;
       return;
     }
 
-    container.innerHTML = enabledPlans.map((plan) => {
+    container.innerHTML = showPlans.map((plan) => {
       const isPopular = plan.id === 'vip_1000' || Number(plan.costStars) === 1000;
+      const isPlanEnabled = plan.enabled !== false;
       const isThisActive = vip.active && (vip.activePlanId === plan.id || Number(vip.costStars) === Number(plan.costStars));
       const canAfford = bal >= Number(plan.costStars || 0);
-      const btnText = isThisActive
+      const btnText = !isPlanEnabled
+        ? `Unavailable (Paused by Admin)`
+        : isThisActive
         ? `👑 Active (${vip.remainingToday}/${vip.dailyTasksLimit} left today)`
         : (vip.active
             ? `VIP Already Active`
             : `Select & Activate (${Number(plan.costStars).toLocaleString()} ⭐)`);
-      const disabledAttr = (vip.active) ? 'disabled' : '';
+      const disabledAttr = (vip.active || !isPlanEnabled) ? 'disabled' : '';
       return `
         <div class="vip-plan-card ${isPopular ? 'popular-plan' : ''}" data-vip-plan-id="${escapeH(plan.id)}" style="margin:0;width:100%;border:1.5px solid ${isPopular ? 'rgba(250,204,21,0.6)' : 'rgba(168,85,247,0.4)'};border-radius:14px;padding:0.75rem 0.9rem;background:rgba(15,23,42,0.92);">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:0.35rem;">
@@ -234,10 +254,18 @@
   window.addEventListener('firebase:ready', setupCloudSync);
   window.addEventListener('balance:changed', updateHUD);
   window.addEventListener('settings:changed', renderCategoryTasks);
+  window.addEventListener('tasks:changed', renderCategoryTasks);
   window.addEventListener('storage', () => renderCategoryTasks());
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) renderCategoryTasks();
+  });
   try {
     const bc = new BroadcastChannel('nova_task_sync');
     bc.onmessage = () => renderCategoryTasks();
+  } catch (e) {}
+  try {
+    const balBc = new BroadcastChannel('balance_sync_channel');
+    balBc.onmessage = () => updateHUD();
   } catch (e) {}
 
   if (document.readyState === 'loading') {

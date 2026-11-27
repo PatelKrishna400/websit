@@ -3,12 +3,18 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Task Pass — 500 Levels Battle Pass</title>
+  <title>Season 6: Light the Fuse — 500 Levels Battle Pass</title>
 
-  <!-- Google Fonts: Fredoka (Main UI) & Titan One / Lilita One (Game Display) -->
+  <!-- Tailwind CSS (preflight disabled to preserve navbar & shared modal geometry) -->
+  <script>
+    window.tailwind = { config: { corePlugins: { preflight: false } } };
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Google Fonts: Fredoka (UI) & Lilita One / Titan One (Arcade Display) -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700;800;900&family=Lilita+One&family=Titan+One&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700;800;900&family=Lilita+One&family=Titan+One&display=swap" rel="stylesheet" />
 
   <link rel="dns-prefetch" href="//libtl.com" />
   <!-- Rewarded Ads SDK -->
@@ -23,13 +29,14 @@
   <!-- Firebase SDK & Real-Time Cloud Connection -->
   <script type="module" src="../../firebase-config.js"></script>
 
-  <!-- Inherit Home Page Cyber Theme CSS -->
+  <!-- Inherit Home Page Bottom Bar & Core Layout -->
   <link rel="stylesheet" href="../home/style.css" />
 
   <style>
     :root {
-      --font-display: "Titan One", "Lilita One", cursive, sans-serif;
+      --font-display: "Lilita One", "Titan One", cursive, sans-serif;
       --font-ui: "Fredoka", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --stroke-dark: #11131e;
       --cyber-blue: #38bdf8;
       --cyber-gold: #facc15;
       --bg-dark: #060e24;
@@ -45,13 +52,22 @@
       margin: 0;
       padding: 0;
       font-family: var(--font-ui);
-      background-color: #030816 !important;
-      color: #f8fafc;
-      overflow-x: hidden;
+      background-color: #090b12 !important;
+      color: #ffffff;
+      overflow-x: clip;
       min-height: 100vh;
       display: flex !important;
       justify-content: center !important;
       align-items: flex-start !important;
+    }
+
+    .font-display {
+      font-family: var(--font-display) !important;
+      letter-spacing: 0.02em;
+    }
+
+    .font-ui {
+      font-family: var(--font-ui) !important;
     }
 
     /* Outer Mobile View Shell matching Home page (Image 2) */
@@ -69,7 +85,7 @@
       flex-direction: column !important;
       padding-bottom: 84px;
       box-sizing: border-box;
-      overflow-x: hidden;
+      overflow-x: clip;
     }
 
     .page-content {
@@ -150,11 +166,10 @@
       transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
     }
     .btn-toggle-pass-amber:hover {
-      transform: translateY(-1px);
       box-shadow: 0 4px 14px rgba(245, 158, 11, 0.6);
     }
     .btn-toggle-pass-amber:active {
-      transform: scale(0.95);
+      opacity: 0.92;
     }
 
     .btn-toggle-pass-green {
@@ -167,14 +182,13 @@
       border: 1.5px solid #6ee7b7;
       box-shadow: 0 3px 10px rgba(16, 185, 129, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.4);
       cursor: pointer;
-      transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+      transition: box-shadow 0.18s ease, opacity 0.18s ease;
     }
     .btn-toggle-pass-green:hover {
-      transform: translateY(-1px);
       box-shadow: 0 4px 14px rgba(16, 185, 129, 0.6);
     }
     .btn-toggle-pass-green:active {
-      transform: scale(0.95);
+      opacity: 0.92;
     }
 
     /* Quick Jump Scrubber - Removed per user request */
@@ -191,13 +205,13 @@
     /* Sticky Column Headers (FREE, TIER, PASS) */
     .pass-sticky-header {
       position: sticky;
-      top: 61px;
+      top: 62px;
       z-index: 45;
-      background: rgba(6, 14, 36, 0.95);
+      background: rgba(6, 14, 36, 0.97);
       backdrop-filter: blur(16px);
       -webkit-backdrop-filter: blur(16px);
-      border-top: 1px solid rgba(56, 189, 248, 0.15);
-      border-bottom: 1px solid rgba(56, 189, 248, 0.15);
+      border-top: 1px solid rgba(56, 189, 248, 0.22);
+      border-bottom: 1px solid rgba(56, 189, 248, 0.22);
       padding: 0.5rem 0.85rem;
       box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
       border-radius: 14px;
@@ -263,89 +277,15 @@
       box-sizing: border-box;
     }
 
-    .progress-rail {
-      position: absolute;
-      top: 14px;
-      bottom: 24px;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 14px;
-      background-color: #0b1530;
-      border-left: 2px solid #030816;
-      border-right: 2px solid #030816;
-      border-radius: 999px;
-      overflow: hidden;
-      z-index: 5;
-      box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.85);
-    }
-
-    .progress-checkered-fill {
-      width: 100%;
-      background-color: #38bdf8;
-      background-image:
-        linear-gradient(45deg, #0284c7 25%, transparent 25%),
-        linear-gradient(-45deg, #0284c7 25%, transparent 25%),
-        linear-gradient(45deg, transparent 75%, #0284c7 75%),
-        linear-gradient(-45deg, transparent 75%, #0284c7 75%);
-      background-size: 10px 10px;
-      background-position: 0 0, 0 5px, 5px -5px, -5px 0;
-      box-shadow: 0 0 12px rgba(56, 189, 248, 0.8), inset 0 2px 0 rgba(255,255,255,0.4);
-      transition: height 0.3s ease;
-      height: 0px;
-    }
-
-    /* Tier Row */
+    /* Tier Row (1 to 500 continuous with fast virtualized paint) */
     .tier-row {
       position: relative;
-      display: grid;
-      grid-template-columns: 1fr 54px 1fr;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 20px;
       z-index: 10;
+      content-visibility: auto;
+      contain-intrinsic-size: 1px 142px;
     }
 
-    .tier-badge {
-      width: 44px;
-      height: 44px;
-      margin: 0 auto;
-      border-radius: 12px;
-      background: linear-gradient(155deg, #1e293b 0%, #0f172a 100%);
-      border: 2px solid #475569;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-family: 'Titan One', 'Fredoka', cursive, sans-serif;
-      font-size: 0.95rem;
-      color: #94a3b8;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.15);
-      z-index: 15;
-      transition: all 0.25s ease;
-    }
-
-    .tier-row.reached .tier-badge {
-      background: linear-gradient(155deg, #0284c7 0%, #075985 100%);
-      border-color: #38bdf8;
-      color: #ffffff;
-      box-shadow: 0 0 14px rgba(56, 189, 248, 0.6), inset 0 1.5px 0 rgba(255, 255, 255, 0.45);
-      transform: scale(1.05);
-    }
-
-    .tier-row.current .tier-badge {
-      background: linear-gradient(155deg, #f59e0b 0%, #b45309 100%);
-      border-color: #fde047;
-      color: #ffffff;
-      box-shadow: 0 0 20px rgba(250, 204, 21, 0.85), inset 0 2px 0 rgba(255, 255, 255, 0.6);
-      transform: scale(1.15);
-      animation: currentBadgePulse 2s infinite ease-in-out;
-    }
-
-    @keyframes currentBadgePulse {
-      0%, 100% { transform: scale(1.15); box-shadow: 0 0 16px rgba(250, 204, 21, 0.7); }
-      50% { transform: scale(1.22); box-shadow: 0 0 24px rgba(250, 204, 21, 1); }
-    }
-
-    /* Cards */
+    /* Cards (Stationary hover with crisp glow — zero vertical jitter) */
     .pass-card {
       position: relative;
       border-radius: 16px;
@@ -355,7 +295,7 @@
       align-items: center;
       text-align: center;
       cursor: pointer;
-      transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+      transition: border-color 0.18s ease, box-shadow 0.18s ease;
       box-sizing: border-box;
       min-height: 116px;
       justify-content: space-between;
@@ -363,7 +303,7 @@
     }
 
     .pass-card:active {
-      transform: scale(0.96);
+      opacity: 0.92;
     }
 
     /* Free Card (Matches Home page Cyber Blue Theme) */
@@ -373,8 +313,7 @@
     }
     .card-free-tier:hover {
       border-color: #38bdf8;
-      box-shadow: 0 8px 22px rgba(0, 0, 0, 0.6), 0 0 16px rgba(56, 189, 248, 0.3);
-      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6), 0 0 16px rgba(56, 189, 248, 0.35);
     }
 
     /* Pass Card (Matches Home page Gold/VIP Theme) */
@@ -384,8 +323,7 @@
     }
     .card-pass-tier:hover {
       border-color: #facc15;
-      box-shadow: 0 8px 22px rgba(0, 0, 0, 0.6), 0 0 16px rgba(250, 204, 21, 0.35);
-      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6), 0 0 16px rgba(250, 204, 21, 0.38);
     }
     .card-pass-tier.locked-padlock {
       filter: saturate(0.65) brightness(0.85);
@@ -395,7 +333,7 @@
     .card-status-pill {
       font-size: 0.66rem;
       font-weight: 800;
-      padding: 2.5px 8px;
+      padding: 3px 9px;
       border-radius: 999px;
       line-height: 1.1;
       margin-top: 4px;
@@ -410,15 +348,13 @@
       background: linear-gradient(155deg, #10b981 0%, #059669 100%);
       border: 1px solid #6ee7b7;
       color: #ffffff;
-      animation: claimPulse 1.5s infinite;
-      box-shadow: 0 0 10px rgba(16, 185, 129, 0.6);
+      box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
     }
     .pill-ad {
       background: linear-gradient(155deg, #9333ea 0%, #db2777 100%);
       border: 1px solid #f472b6;
       color: #ffffff;
-      animation: claimPulse 1.5s infinite;
-      box-shadow: 0 0 12px rgba(219, 39, 119, 0.6);
+      box-shadow: 0 0 10px rgba(219, 39, 119, 0.45);
     }
     .pill-locked {
       background: rgba(15, 23, 42, 0.8);
@@ -426,9 +362,42 @@
       color: #94a3b8;
     }
 
-    @keyframes claimPulse {
-      0%, 100% { transform: scale(1); }
-      50% { transform: scale(1.06); }
+    /* Clean Redesigned Hero Pass Card Helpers */
+    .pass-forge-redesigned {
+      padding: 0.95rem !important;
+      display: flex;
+      flex-direction: column;
+      gap: 0.65rem;
+    }
+    .pass-cycle-pill-inline {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 9px;
+      border-radius: 999px;
+      background: linear-gradient(135deg, #facc15 0%, #d97706 100%);
+      color: #422006;
+      font-size: 0.7rem;
+      font-weight: 900;
+      border: 1px solid #fef08a;
+    }
+    .pass-forge-footer-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+      padding-top: 0.35rem;
+      border-top: 1px solid rgba(56, 189, 248, 0.16);
+    }
+    .pass-jump-current-btn {
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: rgba(56, 189, 248, 0.16);
+      border: 1px solid rgba(56, 189, 248, 0.45);
+      color: #38bdf8;
+      font-size: 0.7rem;
+      font-weight: 800;
+      cursor: pointer;
     }
 
     /* Reward Detail & Claim Modal (Styled to match Home verification modals) */
@@ -513,6 +482,217 @@
       transform: scale(1) translateY(0);
     }
 
+    /* Arcade Battle Pass Design System (Applied cleanly without changing Pass logic) */
+    .arcade-pass-shell {
+      position: relative;
+      width: 100%;
+      max-width: 440px;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background-color: #141829 !important;
+      box-shadow: 0 0 50px rgba(0, 0, 0, 0.85);
+      border-left: 1px solid rgba(30, 41, 59, 0.85);
+      border-right: 1px solid rgba(30, 41, 59, 0.85);
+      padding-bottom: 84px;
+    }
+
+    .text-outline-xs {
+      -webkit-text-stroke: 2.2px var(--stroke-dark);
+      paint-order: stroke fill;
+      text-shadow: 0 2px 0 var(--stroke-dark);
+    }
+
+    .text-outline-sm {
+      -webkit-text-stroke: 3.2px var(--stroke-dark);
+      paint-order: stroke fill;
+      text-shadow: 0 2.5px 0 var(--stroke-dark);
+    }
+
+    .text-outline-md {
+      -webkit-text-stroke: 4.5px var(--stroke-dark);
+      paint-order: stroke fill;
+      text-shadow: 0 3.5px 0 var(--stroke-dark);
+    }
+
+    .btn-game {
+      position: relative;
+      border: 3px solid var(--stroke-dark) !important;
+      border-radius: 14px !important;
+      font-family: var(--font-display) !important;
+      cursor: pointer;
+      transition: transform 0.1s ease, filter 0.15s ease;
+      overflow: hidden;
+    }
+
+    .btn-game::before {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 6px;
+      right: 6px;
+      height: 42%;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0.1) 100%);
+      border-radius: 10px 10px 6px 6px;
+      pointer-events: none;
+    }
+
+    .btn-game:active {
+      transform: translateY(2px) scale(0.98);
+    }
+
+    .btn-yellow {
+      background: linear-gradient(180deg, #ffe938 0%, #ffc400 100%) !important;
+      box-shadow: 0 4px 0 #b37400, 0 6px 0 var(--stroke-dark), 0 8px 14px rgba(0, 0, 0, 0.45) !important;
+    }
+
+    .btn-blue {
+      background: linear-gradient(180deg, #47b5ff 0%, #1577ea 100%) !important;
+      box-shadow: 0 4px 0 #0a4699, 0 6px 0 var(--stroke-dark), 0 8px 14px rgba(0, 0, 0, 0.45) !important;
+    }
+
+    .btn-green {
+      background: linear-gradient(180deg, #5be84d 0%, #24b321 100%) !important;
+      box-shadow: 0 4px 0 #136e11, 0 6px 0 var(--stroke-dark), 0 8px 14px rgba(0, 0, 0, 0.45) !important;
+    }
+
+    .btn-dark {
+      background: linear-gradient(180deg, #353b50 0%, #1f2333 100%) !important;
+      box-shadow: 0 3px 0 #0d0f17, 0 4px 0 var(--stroke-dark) !important;
+    }
+
+    .hero-volcanic-bg {
+      background:
+        radial-gradient(circle at 78% 58%, rgba(255, 224, 102, 0.95) 0%, rgba(255, 136, 0, 0.65) 28%, rgba(214, 40, 0, 0) 62%),
+        radial-gradient(circle at 22% 20%, rgba(255, 166, 0, 0.55) 0%, transparent 55%),
+        linear-gradient(165deg, #3a120a 0%, #8f2408 35%, #d94e07 72%, #ff9914 100%);
+    }
+
+    .comic-track-bg {
+      position: relative;
+      background: linear-gradient(180deg, #5d2ec9 0%, #4834d4 35%, #2364db 72%, #147ef2 100%);
+    }
+
+    .comic-rays {
+      background-image:
+        repeating-conic-gradient(
+          from 0deg at 50% 18%,
+          rgba(255, 255, 255, 0.06) 0deg 10deg,
+          transparent 10deg 20deg
+        ),
+        radial-gradient(rgba(13, 18, 40, 0.16) 1.5px, transparent 1.5px);
+      background-size: 100% 100%, 14px 14px;
+    }
+
+    .arcade-progress-rail {
+      width: 22px;
+      background-color: #161926;
+      border-left: 3px solid var(--stroke-dark);
+      border-right: 3px solid var(--stroke-dark);
+      box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.75);
+      overflow: hidden;
+    }
+
+    .arcade-progress-fill {
+      width: 100%;
+      background-color: #289eff;
+      background-image:
+        linear-gradient(45deg, #1769d4 25%, transparent 25%),
+        linear-gradient(-45deg, #1769d4 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #1769d4 75%),
+        linear-gradient(-45deg, transparent 75%, #1769d4 75%);
+      background-size: 14px 14px;
+      background-position: 0 0, 0 7px, 7px -7px, -7px 0;
+      border-bottom: 3px solid var(--stroke-dark);
+      box-shadow: inset 2px 0 0 rgba(255, 255, 255, 0.35), 0 3px 6px rgba(0, 0, 0, 0.5);
+      transition: height 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .reward-card {
+      position: relative;
+      border: 3px solid var(--stroke-dark);
+      border-radius: 16px;
+      cursor: pointer;
+    }
+
+    .reward-card:active {
+      transform: scale(0.97);
+    }
+
+    .card-free {
+      background:
+        radial-gradient(circle at 50% 42%, rgba(92, 189, 255, 0.65) 0%, rgba(18, 108, 224, 0) 70%),
+        linear-gradient(180deg, #2196ff 0%, #0d63d4 100%);
+      box-shadow: 0 4px 0 #073a85, 0 6px 0 var(--stroke-dark), 0 8px 14px rgba(0, 0, 0, 0.35);
+    }
+
+    .card-pass {
+      background:
+        radial-gradient(circle at 50% 42%, rgba(255, 252, 179, 0.85) 0%, rgba(255, 196, 0, 0) 68%),
+        linear-gradient(180deg, #ffea3b 0%, #ffbe0b 100%);
+      box-shadow: 0 4px 0 #b37400, 0 6px 0 var(--stroke-dark), 0 8px 14px rgba(0, 0, 0, 0.35);
+    }
+
+    .card-gleam {
+      position: absolute;
+      inset: 0;
+      border-radius: 13px;
+      overflow: hidden;
+      pointer-events: none;
+    }
+
+    .card-gleam::after {
+      content: '';
+      position: absolute;
+      top: -30%;
+      left: -30%;
+      width: 160%;
+      height: 160%;
+      background: linear-gradient(115deg, transparent 35%, rgba(255, 255, 255, 0.22) 45%, rgba(255, 255, 255, 0.05) 55%, transparent 65%);
+    }
+
+    .card-claimable {
+      box-shadow: 0 4px 0 #b37400, 0 6px 0 var(--stroke-dark), 0 0 18px 3px rgba(255, 238, 88, 0.9) !important;
+    }
+
+    .padlock-unlocked {
+      transform: scale(0) rotate(25deg) translateY(-10px);
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    @keyframes floatEmber {
+      0% { transform: translateY(0) scale(1); opacity: 0; }
+      30% { opacity: 0.95; }
+      100% { transform: translateY(-44px) translateX(8px) scale(0.4); opacity: 0; }
+    }
+
+    .ember {
+      position: absolute;
+      border-radius: 9999px;
+      background: #ffe066;
+      box-shadow: 0 0 6px #ff7b00;
+      animation: floatEmber 2.6s infinite ease-out;
+      pointer-events: none;
+    }
+
+    @keyframes confettiFall {
+      0% { transform: translate3d(0, -10px, 0) rotate(0deg) scale(1); opacity: 1; }
+      100% { transform: translate3d(var(--tx, 20px), 260px, 0) rotate(540deg) scale(0.6); opacity: 0; }
+    }
+
+    .confetti-piece {
+      position: fixed;
+      top: 140px;
+      width: 9px;
+      height: 9px;
+      border: 1.5px solid #11131e;
+      border-radius: 2px;
+      pointer-events: none;
+      z-index: 10050;
+      animation: confettiFall 1.15s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+    }
+
     /* Toast Notification */
     .arcade-toast-pill {
       position: fixed;
@@ -521,150 +701,290 @@
       transform: translateX(-50%) translateY(12px);
       z-index: 10010;
       pointer-events: none;
-      transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+      transition: all 0.28s ease;
       opacity: 0;
-      padding: 0.6rem 1.1rem;
+      padding: 0.55rem 1.05rem;
       border-radius: 999px;
-      background: rgba(10, 23, 56, 0.95);
-      border: 1.5px solid #38bdf8;
+      background: rgba(17, 21, 36, 0.96);
+      border: 2px solid #fbbf24;
       color: #ffffff;
-      font-weight: 800;
-      font-size: 0.8rem;
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7), 0 0 16px rgba(56, 189, 248, 0.4);
+      font-family: var(--font-display);
+      font-size: 0.85rem;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.7);
       display: flex;
       align-items: center;
       gap: 8px;
+      max-width: 90%;
+      text-align: center;
     }
   </style>
 </head>
 <body>
 
-  <!-- Mobile View Screen Shell matching Home page -->
-  <div class="mobile-container">
+  <!-- Shared SVG Gradients (Single Instance to keep 0 duplicate IDs across 500 tiers) -->
+  <svg width="0" height="0" style="position:absolute;pointer-events:none;opacity:0;" aria-hidden="true">
+    <defs>
+      <radialGradient id="coinGrad" cx="35%" cy="30%" r="65%">
+        <stop offset="0%" stop-color="#fff59d"/>
+        <stop offset="35%" stop-color="#facc15"/>
+        <stop offset="70%" stop-color="#eab308"/>
+        <stop offset="100%" stop-color="#ca8a04"/>
+      </radialGradient>
+      <linearGradient id="coinRim" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#fef08a"/>
+        <stop offset="100%" stop-color="#854d0e"/>
+      </linearGradient>
+      <linearGradient id="coinInner" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#fef9c3"/>
+        <stop offset="50%" stop-color="#f59e0b"/>
+        <stop offset="100%" stop-color="#b45309"/>
+      </linearGradient>
+      <linearGradient id="ticketGrad" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#ff4d4d"/>
+        <stop offset="45%" stop-color="#ef4444"/>
+        <stop offset="100%" stop-color="#b91c1c"/>
+      </linearGradient>
+      <linearGradient id="ticketInnerGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#fef08a"/>
+        <stop offset="100%" stop-color="#f59e0b"/>
+      </linearGradient>
+      <radialGradient id="starGlow" cx="40%" cy="35%" r="65%">
+        <stop offset="0%" stop-color="#ffffff"/>
+        <stop offset="25%" stop-color="#fef08a"/>
+        <stop offset="60%" stop-color="#facc15"/>
+        <stop offset="100%" stop-color="#eab308"/>
+      </radialGradient>
+      <linearGradient id="starShade" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#f59e0b"/>
+        <stop offset="100%" stop-color="#b45309"/>
+      </linearGradient>
+    </defs>
+  </svg>
+
+  <!-- Mobile Portrait Arcade Shell -->
+  <div class="arcade-pass-shell mobile-container">
 
     <!-- ======================================================================
-         1. TOP HEADER HUD (Back Button, Coins, Stars, Tickets)
+         1. TOP STICKY ARCADE HUD BAR (Real Coin, Star, Ticket Balances & XP Bar)
          ====================================================================== -->
-    <header class="home-header">
-      <div class="header-user" onclick="navigateHome()" style="cursor: pointer;" title="Return to Home">
-        <div class="user-avatar" id="headerUserAvatar">⚡</div>
-        <div class="user-meta">
-          <span class="user-name" id="headerUserName">Player</span>
-          <span class="user-level" id="userRankDisplay">RANK #1</span>
+    <header id="arcadePassHud" class="sticky top-0 z-40 bg-[#0d101b]/95 backdrop-blur-md border-b-[3px] border-[#07080e] px-2.5 pt-2 pb-2 shadow-lg">
+      <!-- Row 1: Three Resource Counters + Jump & Home Buttons -->
+      <div class="flex items-center justify-between gap-1">
+        <div class="flex items-center gap-1.5 flex-wrap">
+          <!-- Gold Coins -->
+          <div id="coinPill" onclick="showToast('Gold Coins: ' + state.coins.toLocaleString())" class="relative flex items-center bg-[#1c2133] border-2 border-[#090b12] rounded-full pl-1 pr-2.5 py-0.5 shadow-inner cursor-pointer">
+            <span class="relative w-6 h-6 -ml-0.5 mr-1 flex-shrink-0">
+              <svg viewBox="0 0 36 36" class="w-full h-full drop-shadow">
+                <circle cx="18" cy="18" r="15" fill="#b45309" stroke="#11131e" stroke-width="2.5" />
+                <circle cx="18" cy="16.5" r="13" fill="#fbbf24" />
+                <ellipse cx="14" cy="11" rx="5" ry="2.5" transform="rotate(-25 14 11)" fill="#fef9c3" opacity="0.85" />
+                <circle cx="18" cy="16.5" r="9.2" fill="#f59e0b" stroke="#fde68a" stroke-width="1.5" />
+                <path d="M18 10.5l1.8 3.7 4 .6-2.9 2.8.7 4-3.6-1.9-3.6 1.9.7-4-2.9-2.8 4-.6z" fill="#fef08a" />
+              </svg>
+            </span>
+            <span id="hudCoins" class="font-display text-white text-[13px] sm:text-[15px] text-outline-xs tracking-wide">0</span>
+          </div>
+
+          <!-- Season Stars -->
+          <div id="starPill" onclick="showToast('Season Stars: ' + state.stars.toLocaleString())" class="relative flex items-center bg-[#1c2133] border-2 border-[#090b12] rounded-full pl-1 pr-2.5 py-0.5 shadow-inner cursor-pointer">
+            <span class="relative w-6 h-6 -ml-0.5 mr-1 flex-shrink-0">
+              <svg viewBox="0 0 36 36" class="w-full h-full drop-shadow">
+                <polygon points="18,3 22.6,12.4 33,13.9 25.5,21.2 27.3,31.5 18,26.6 8.7,31.5 10.5,21.2 3,13.9 13.4,12.4" fill="#f59e0b" stroke="#11131e" stroke-width="2.6" stroke-linejoin="round" />
+                <polygon points="18,5.5 21.8,13.2 30.2,14.4 24.1,20.3 25.5,28.7 18,24.7 10.5,28.7 11.9,20.3 5.8,14.4 14.2,13.2" fill="#fde047" />
+              </svg>
+            </span>
+            <span id="hudStars" class="font-display text-white text-[13px] sm:text-[15px] text-outline-xs tracking-wide">0</span>
+          </div>
+
+          <!-- Event Tickets -->
+          <div id="ticketPill" onclick="showToast('Event Tickets: ' + state.tickets.toLocaleString())" class="relative flex items-center bg-[#1c2133] border-2 border-[#090b12] rounded-full pl-1 pr-2.5 py-0.5 shadow-inner cursor-pointer">
+            <span class="relative w-6 h-6 -ml-0.5 mr-1 flex-shrink-0">
+              <svg viewBox="0 0 36 36" class="w-full h-full drop-shadow">
+                <g transform="rotate(-14 18 18)">
+                  <path d="M4,9 h28 v5 a3.5,3.5 0 0,0 0,8 v5 h-28 v-5 a3.5,3.5 0 0,0 0,-8 z" fill="#fbbf24" stroke="#11131e" stroke-width="2.5" stroke-linejoin="round" />
+                  <rect x="8.5" y="12" width="19" height="12" rx="1.5" fill="#f59e0b" stroke="#fef08a" stroke-width="1.2" stroke-dasharray="2.5 2" />
+                  <circle cx="18" cy="18" r="3" fill="#fef9c3" />
+                </g>
+              </svg>
+            </span>
+            <span id="hudTickets" class="font-display text-white text-[13px] sm:text-[15px] text-outline-xs tracking-wide">0</span>
+          </div>
+
+          <!-- Pass & Quiz Diamonds -->
+          <div id="diamondPill" onclick="showToast('Diamonds: ' + (state.diamonds || 0).toLocaleString())" class="relative flex items-center bg-[#1c2133] border-2 border-[#090b12] rounded-full pl-1 pr-2.5 py-0.5 shadow-inner cursor-pointer">
+            <span class="relative w-6 h-6 -ml-0.5 mr-1 flex-shrink-0">
+              <svg viewBox="0 0 36 36" class="w-full h-full drop-shadow">
+                <polygon points="10,7 26,7 33,15 18,31 3,15" fill="#06b6d4" stroke="#11131e" stroke-width="2.4" stroke-linejoin="round" />
+                <polygon points="10,7 26,7 22,15 14,15" fill="#a5f3fc" />
+                <polygon points="14,15 22,15 18,31" fill="#38bdf8" />
+                <polygon points="3,15 14,15 18,31" fill="#0284c7" />
+              </svg>
+            </span>
+            <span id="hudDiamonds" class="font-display text-white text-[13px] sm:text-[15px] text-outline-xs tracking-wide">0</span>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-1.5 flex-shrink-0">
+          <button type="button" onclick="scrollToCurrentLevel()" title="Jump to Current Pass Level" class="btn-game btn-blue px-2 h-8 flex items-center justify-center text-[11px] text-white text-outline-xs">🎯 <span id="userRankDisplay" class="ml-1">LVL 0/500</span></button>
+          <button type="button" onclick="navigateHome()" aria-label="Home" class="btn-game btn-dark w-9 h-8 flex items-center justify-center flex-shrink-0">
+            <svg viewBox="0 0 24 24" class="w-4 h-4 text-white drop-shadow" fill="currentColor">
+              <path d="M12 3.172L2.293 12.88a1 1 0 001.414 1.414L5 13.001V20a1 1 0 001 1h4v-5h4v5h4a1 1 0 001-1v-6.999l1.293 1.293a1 1 0 001.414-1.414L12 3.172z" />
+            </svg>
+          </button>
         </div>
       </div>
 
-      <div class="header-pills">
-        <div class="coin-pill" id="coinPill" title="Total Coin Balance">
-          <span>🪙</span>
-          <span class="coin-value" id="hudCoins">0</span>
+      <!-- Row 2: Live Task Pass Level Bar (Synced to real Pass progress 0-500) -->
+      <div class="mt-2 flex items-center gap-2">
+        <div id="levelNumBadge" class="w-8 h-7 bg-gradient-to-b from-[#38bdf8] to-[#0284c7] border-2 border-[#090b12] rounded-lg flex items-center justify-center shadow font-display text-sm text-white text-outline-xs flex-shrink-0" title="Current Battle Pass Level">
+          <span id="levelNumText">0</span>
         </div>
-        <div class="star-pill" id="starPill" title="Total Star Balance">
-          <span>⭐</span>
-          <span class="star-value" id="hudStars">0</span>
+        <div class="relative flex-1 h-5 bg-[#161926] border-2 border-[#090b12] rounded-full overflow-hidden flex items-center justify-center">
+          <div id="taskProgressBar" class="absolute left-0 top-0 bottom-0 bg-gradient-to-r from-[#289eff] to-[#5bd0ff] transition-all duration-300" style="width: 0%;"></div>
+          <span id="taskCountText" class="relative z-10 font-display text-[11px] text-white text-outline-xs">0 / 10 Tasks</span>
         </div>
-        <div class="ticket-pill" id="ticketPill" title="Total Ticket Balance">
-          <span>🎟️</span>
-          <span class="ticket-value" id="hudTickets">0</span>
+        <div id="targetLevelBadge" class="px-2 h-7 bg-gradient-to-b from-[#ffe436] to-[#f59e0b] border-2 border-[#090b12] rounded-lg flex items-center gap-1 shadow font-display text-[11px] text-white text-outline-xs flex-shrink-0" title="Milestone Star Target">
+          <span>⭐</span><span id="rewardAmountText">100</span>
         </div>
+        <span id="cycleTaskTag" class="hidden">0/10</span>
+        <span id="headerUserName" class="hidden">Player</span>
+        <span id="headerUserAvatar" class="hidden">⚡</span>
       </div>
     </header>
 
     <!-- ======================================================================
-         PAGE CONTENT CONTAINER (Matches Home Page .page-content)
+         2. VOLCANIC FIERY HERO BANNER (Title, Live Season Timer & Warrior)
          ====================================================================== -->
-    <main class="page-content" style="padding-bottom: 2rem;">
+    <section class="relative hero-volcanic-bg border-b-[3px] border-[#090b12] px-3.5 pt-3 pb-3.5 overflow-hidden">
+      <!-- Floating Animated Embers -->
+      <div class="ember w-1.5 h-1.5 left-[18%] bottom-6" style="animation-delay: 0s;"></div>
+      <div class="ember w-2 h-2 left-[52%] bottom-10" style="animation-delay: 0.8s;"></div>
+      <div class="ember w-1.5 h-1.5 left-[78%] bottom-5" style="animation-delay: 1.4s;"></div>
+      <div class="ember w-1 h-1 left-[36%] bottom-4" style="animation-delay: 2.0s;"></div>
 
-      <!-- ======================================================================
-           2. TASK PASS HERO CARD (.forge-card)
-           ====================================================================== -->
-      <div class="task-pass-widget-wrap">
-        <section class="forge-card" id="forgeCard">
-          <!-- Top-Left Floating Gold Pill (3/10) -->
-          <div class="top-pill">
-            <span id="cycleTaskTag" class="game-outline-sm">3/10</span>
+      <div class="relative z-10 flex items-center justify-between gap-2">
+        <!-- Left: Pass Ticket + Live Admin-Synced Timer + Cartoon Title -->
+        <div class="min-w-0 flex-1">
+          <div class="inline-flex items-center gap-1.5 bg-[#16121e]/90 border-2 border-[#11131e] rounded-xl px-2 py-1 mb-1.5 shadow-md max-w-full">
+            <svg viewBox="0 0 44 30" class="w-6 h-4 -rotate-6 flex-shrink-0 drop-shadow">
+              <path d="M4,4 h36 v6 a4,4 0 0,0 0,8 v6 h-36 v-6 a4,4 0 0,0 0,-8 z" fill="#fbbf24" stroke="#11131e" stroke-width="2.5" />
+              <rect x="9" y="7" width="26" height="16" rx="2" fill="none" stroke="#b45309" stroke-width="1.5" stroke-dasharray="2 2" />
+            </svg>
+            <span id="passHeroSeasonCountdown" class="font-display text-[10px] sm:text-[11px] text-[#ffe047] text-outline-xs tracking-wide truncate">⏱️ Season Ends: Calculating...</span>
           </div>
 
-          <!-- Top Row: Title & Season Pass Activation Button -->
-          <div class="task-pass-header-row" style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 0.35rem;">
-            <div style="display: flex; flex-direction: column; gap: 2px;">
-              <span class="game-outline task-pass-title">TASK PASS</span>
+          <h1 class="font-display uppercase leading-[0.95] select-none m-0">
+            <span class="block text-sm sm:text-base text-white text-outline-sm tracking-wider">SEASON 6 • 1–500 LVLS</span>
+            <span class="block text-[25px] sm:text-[29px] text-[#ffcf24] text-outline-md mt-0.5">LIGHT THE FUSE</span>
+          </h1>
+        </div>
+
+        <!-- Right: 3D Berserker + Flame Spirit Transparent Sticker (No Board / No Border) -->
+        <div class="relative w-[104px] h-[104px] sm:w-[120px] sm:h-[120px] flex-shrink-0 -my-1.5 flex items-center justify-center pointer-events-none select-none" style="background: transparent; border: none; box-shadow: none;">
+          <img src="assets/hero-berserker-sticker.png" alt="Season 6 Light the Fuse 3D Sticker" class="w-full h-full object-contain drop-shadow-[0_6px_12px_rgba(0,0,0,0.65)] pointer-events-none select-none" style="background: transparent; border: none; border-radius: 0; box-shadow: none;" />
+        </div>
+      </div>
+
+      <!-- Two Glossy 3D Buttons Side-by-Side ('Activate' & 'Preview') -->
+      <div class="relative z-10 grid grid-cols-2 gap-2.5 mt-2.5">
+        <button type="button" id="btnToggleSeasonPass" onclick="openActivatePassModal()" class="btn-game btn-yellow py-2 px-3 flex items-center justify-center gap-1.5">
+          <span id="activate-btn-text" class="text-base sm:text-lg text-white text-outline-sm tracking-wide">Activate (3,000 ⭐)</span>
+        </button>
+        <button type="button" onclick="openPreviewModal()" class="btn-game btn-blue py-2 px-3 flex items-center justify-center gap-1.5">
+          <span class="text-base sm:text-lg text-white text-outline-sm tracking-wide">Preview</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- ======================================================================
+         3. STICKY COLUMN HEADERS ('FREE', 'TIER', 'PASS')
+         ====================================================================== -->
+    <div id="arcadePassStickyCols" class="sticky top-[86px] z-30 bg-[#131626]/95 backdrop-blur-md border-b-[3px] border-[#090b12] px-3 py-2 shadow-md">
+      <div class="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+        <div class="flex justify-center">
+          <div class="w-full max-w-[130px] bg-gradient-to-b from-[#3ba8ff] to-[#1268d6] border-[2.5px] border-[#090b12] rounded-xl py-1 text-center shadow-[0_3px_0_#090b12]">
+            <span class="font-display text-base sm:text-lg text-white text-outline-xs tracking-wider">FREE</span>
+          </div>
+        </div>
+        <div class="flex justify-center px-1">
+          <div class="bg-[#23283d] border-[2.5px] border-[#090b12] rounded-xl px-3 py-1 text-center shadow-[0_3px_0_#090b12]">
+            <span class="font-display text-sm sm:text-base text-slate-100 text-outline-xs tracking-wider">TIER</span>
+          </div>
+        </div>
+        <div class="flex justify-center">
+          <div id="passHeaderBadge" onclick="openActivatePassModal()" role="button" tabindex="0" class="w-full max-w-[130px] bg-gradient-to-b from-[#ffe436] to-[#f59e0b] border-[2.5px] border-[#090b12] rounded-xl py-1 text-center shadow-[0_3px_0_#090b12] flex items-center justify-center gap-1 cursor-pointer">
+            <span class="font-display text-base sm:text-lg text-white text-outline-xs tracking-wider">PASS</span>
+            <span id="passActiveDot" class="hidden w-2.5 h-2.5 rounded-full bg-[#22c55e] border border-[#090b12]"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ======================================================================
+         4. VERTICAL 500-LEVEL COMIC TRACK (Tiers 1 to 500 Generated Dynamically)
+         ====================================================================== -->
+    <main class="relative flex-1 comic-track-bg overflow-x-clip pb-24">
+      <div class="absolute inset-0 comic-rays pointer-events-none"></div>
+
+      <div id="passTrackWrap" class="relative w-full min-h-[200px]">
+        <!-- Central Vertical Checkered Progress Bar Rail -->
+        <div id="progressRail" class="arcade-progress-rail absolute top-0 bottom-0 left-1/2 -translate-x-1/2 z-10">
+          <div id="progressFill" class="arcade-progress-fill" style="height: 0px;"></div>
+        </div>
+
+        <!-- 1 to 500 Tiers Container -->
+        <div id="tiersContainer" class="relative z-20 flex flex-col gap-3.5 px-3 pt-4 pb-6">
+          <!-- Rendered by JS: Levels 1 to 500 -->
+        </div>
+      </div>
+    </main>
+
+    <!-- SEASON PREVIEW MODAL (Triggered by 'Preview' Button) -->
+    <div id="preview-modal" class="hidden fixed inset-0 z-[10004] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4" onclick="if(event.target===this) closePreviewModal()">
+      <div class="w-full max-w-[390px] bg-gradient-to-b from-[#252b42] to-[#151929] border-[3px] border-[#090b12] rounded-2xl overflow-hidden shadow-2xl" onclick="event.stopPropagation()">
+        <div class="hero-volcanic-bg border-b-[3px] border-[#090b12] px-4 py-3 flex items-center justify-between">
+          <div>
+            <span class="font-display text-xs uppercase text-white text-outline-xs tracking-wider">SEASON 6 PASS • 500 LEVELS</span>
+            <h2 class="font-display text-2xl text-[#ffe047] text-outline-sm leading-tight m-0">LIGHT THE FUSE</h2>
+          </div>
+          <button type="button" onclick="closePreviewModal()" class="w-9 h-9 bg-[#ef4444] border-2 border-[#090b12] rounded-xl font-display text-lg text-white text-outline-xs shadow cursor-pointer">✕</button>
+        </div>
+        <div class="p-4 space-y-3">
+          <p class="text-sm text-slate-200 font-semibold text-center m-0">
+            Unlock the <span class="text-[#fde047] font-bold">Gold Pass (3,000 ⭐)</span> to claim all 500 Pass tiers without watching ads!
+          </p>
+          <div class="space-y-2">
+            <div class="flex items-center gap-3 bg-[#101320] border-2 border-[#090b12] rounded-xl p-2.5">
+              <div class="w-10 h-10 rounded-lg bg-[#fbbf24] border-2 border-[#090b12] flex items-center justify-center font-display text-sm text-white text-outline-xs">1–499</div>
+              <div>
+                <div class="font-display text-base text-[#ffe047] text-outline-xs">Coins, Tickets &amp; Milestones</div>
+                <div class="text-xs text-slate-300">Higher payouts every odd Coin &amp; even Ticket level</div>
+              </div>
             </div>
-            <button type="button" class="btn-toggle-pass-amber" id="btnToggleSeasonPass" onclick="openActivatePassModal()" style="padding: 5px 12px; font-size: 0.72rem; font-weight: 900; border-radius: 999px; cursor: pointer; white-space: nowrap; box-shadow: 0 3px 10px rgba(245, 158, 11, 0.45); transition: all 0.2s ease;">
-              ⚡ Activate Pass (3,000 ⭐)
+            <div class="flex items-center gap-3 bg-[#101320] border-2 border-[#090b12] rounded-xl p-2.5">
+              <div class="w-10 h-10 rounded-lg bg-[#38bdf8] border-2 border-[#090b12] flex items-center justify-center font-display text-sm text-white text-outline-xs">10x</div>
+              <div>
+                <div class="font-display text-base text-[#7dd3fc] text-outline-xs">Every 10th Milestone ⭐</div>
+                <div class="text-xs text-slate-300">Escalating Star chests up to Level 500</div>
+              </div>
+            </div>
+            <div class="flex items-center gap-3 bg-[#101320] border-2 border-[#090b12] rounded-xl p-2.5">
+              <div class="w-10 h-10 rounded-lg bg-[#a855f7] border-2 border-[#090b12] flex items-center justify-center font-display text-base text-white text-outline-xs">500</div>
+              <div>
+                <div class="font-display text-base text-[#e879f9] text-outline-xs">Grand Finale +5,000 ⭐</div>
+                <div class="text-xs text-slate-300">Exclusive Mega Chest at Tier 500</div>
+              </div>
+            </div>
+          </div>
+          <div class="pt-1 flex gap-2.5">
+            <button type="button" onclick="closePreviewModal()" class="btn-game btn-dark flex-1 py-2.5 text-base text-white text-outline-xs">Close</button>
+            <button type="button" onclick="activateFromModal()" class="btn-game btn-yellow flex-[1.5] py-2.5 text-base text-white text-outline-sm">
+              <span id="modal-activate-label">Activate (3,000 ⭐)</span>
             </button>
           </div>
-
-          <!-- Task Pass Progress Track Row: framed on both sides by Level Badges (Level to 10 Level) -->
-          <div class="task-pass-track-row" style="margin-bottom: 0.45rem;">
-            <!-- Left Side: Start / Current Level Badge -->
-            <div class="level-badge" id="levelNumBadge" title="Current Level">
-              <span id="levelNumText" class="game-outline">0</span>
-            </div>
-
-            <!-- Central Progress Track (Loading Bar) -->
-            <div class="game-progress-track">
-              <div class="game-progress-fill" id="taskProgressBar" style="width: 0%;"></div>
-              <span class="task-pass-count-text game-outline-sm" id="taskCountText">0 / 10 Tasks</span>
-            </div>
-
-            <!-- Right Side: 10-Level Target Milestone Badge (Circular Gold Star Medal matching Image 4) -->
-            <div class="level-badge level-badge-target" id="targetLevelBadge" title="Milestone Target: Level 10">
-              <div class="target-star-coin-inner">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="#ffffff" stroke="#d97706" stroke-width="1.2">
-                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
-                </svg>
-              </div>
-              <span class="target-milestone-points game-outline" id="rewardAmountText">1000</span>
-            </div>
-          </div>
-
-          <!-- Season Ends Countdown Timer below Loading Bar with big font size -->
-          <div style="display: flex; justify-content: center; align-items: center; width: 100%; margin-bottom: 0.85rem;">
-            <span style="font-size: 0.95rem; color: #38bdf8; font-weight: 900; letter-spacing: 0.4px; text-shadow: 0 0 10px rgba(56, 189, 248, 0.4);" id="passHeroSeasonCountdown">⏱️ Season Ends: Calculating...</span>
-          </div>
-        </section>
-      </div>
-
-      <!-- ======================================================================
-           4. STICKY COLUMN HEADERS (FREE, TIER, PASS)
-           ====================================================================== -->
-      <div class="pass-sticky-header">
-        <div class="pass-header-grid">
-          <!-- FREE Badge -->
-          <div class="pass-col-header header-free">
-            <span class="game-outline-sm col-header-label">FREE</span>
-          </div>
-
-          <!-- TIER Badge -->
-          <div class="pass-col-header header-tier">
-            <span class="game-outline-sm col-header-label tier-label">TIER</span>
-          </div>
-
-          <!-- PASS Badge -->
-          <div class="pass-col-header header-pass" id="passHeaderBadge" onclick="openActivatePassModal()" role="button" tabindex="0" style="cursor: pointer;" title="Click to activate Season Pass (3,000 ⭐)">
-            <span class="game-outline-sm col-header-label pass-label">PASS</span>
-            <span id="passActiveDot" class="hidden pass-active-dot"></span>
-          </div>
         </div>
       </div>
-
-      <!-- ======================================================================
-           5. 500-LEVEL BATTLE PASS TRACK (Levels 1 to 500 Generated Dynamically)
-           ====================================================================== -->
-      <div class="pass-track-wrap" id="passTrackWrap">
-        <!-- Central Vertical Checkered Progress Rail -->
-        <div class="progress-rail" id="progressRail">
-          <div class="progress-checkered-fill" id="progressFill"></div>
-        </div>
-
-        <!-- 500 Level Rows Container -->
-        <div id="tiersContainer">
-          <!-- Generated by JavaScript: Level 1 to Level 500 -->
-        </div>
-      </div>
-
-    </main>
+    </div>
 
     <!-- ======================================================================
          6. EXACT HOME PAGE BOTTOM MENU BAR (Shop, Pass, Home, Wallet, Profile)
@@ -673,11 +993,7 @@
       <!-- 1. Shop Page Link -->
       <a href="../shop/index.html" class="below-menu-item" id="menuShop" title="Shop">
         <div class="menu-icon-wrap">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path>
-            <line x1="3" y1="6" x2="21" y2="6"></line>
-            <path d="M16 10a4 4 0 0 1-8 0"></path>
-          </svg>
+          <img src="../../assets/menu/nav-shop.png" alt="Shop" class="menu-3d-sticker" style="width: 32px; height: 32px; object-fit: contain; display: block; pointer-events: none;" />
         </div>
         <span class="menu-label">Shop</span>
       </a>
@@ -685,14 +1001,7 @@
       <!-- 2. Pass Page Link (Active with Gold/Cyan Glow) -->
       <a href="../leaderboard/index.html" class="below-menu-item active" id="menuLeaderboard" title="500 Levels Battle Pass">
         <div class="menu-icon-wrap">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path>
-            <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path>
-            <path d="M4 22h16"></path>
-            <path d="M10 14.66V17c0 .55-.45 1-1 1H7c-.55 0-1-.45-1-1v-2.34"></path>
-            <path d="M18 14.66V17c0 .55-.45 1-1 1h-2c-.55 0-1-.45-1-1v-2.34"></path>
-            <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"></path>
-          </svg>
+          <img src="../../assets/menu/nav-pass.png" alt="Pass" class="menu-3d-sticker" style="width: 32px; height: 32px; object-fit: contain; display: block; pointer-events: none;" />
         </div>
         <span class="menu-label">Pass</span>
       </a>
@@ -700,10 +1009,7 @@
       <!-- 3. Home Page Link (Center Elevated) -->
       <a href="../home/index.html" class="below-menu-item center-home-btn" id="menuHome" title="Home">
         <div class="center-home-icon-wrap">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-            <polyline points="9 22 9 12 15 12 15 22"></polyline>
-          </svg>
+          <img src="../../assets/menu/nav-home.png" alt="Home" class="menu-3d-sticker center-home-3d-sticker" style="width: 42px; height: 42px; object-fit: contain; display: block; pointer-events: none;" />
         </div>
         <span class="menu-label">Home</span>
       </a>
@@ -711,11 +1017,7 @@
       <!-- 4. Wallet Page Link -->
       <a href="../wallet/index.html" class="below-menu-item" id="menuWallet" title="Wallet">
         <div class="menu-icon-wrap">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"></path>
-            <path d="M3 5v14a2 2 0 0 0 2 2h16v-5"></path>
-            <path d="M18 12a2 2 0 0 0 0 4h4v-4Z"></path>
-          </svg>
+          <img src="../../assets/menu/nav-wallet.png" alt="Wallet" class="menu-3d-sticker" style="width: 32px; height: 32px; object-fit: contain; display: block; pointer-events: none;" />
         </div>
         <span class="menu-label">Wallet</span>
       </a>
@@ -723,10 +1025,7 @@
       <!-- 5. Profile Page Link -->
       <a href="../profile/index.html" class="below-menu-item" id="menuProfile" title="Profile">
         <div class="menu-icon-wrap">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path>
-            <circle cx="12" cy="7" r="4"></circle>
-          </svg>
+          <img src="../../assets/menu/nav-profile.png" alt="Profile" class="menu-3d-sticker" style="width: 32px; height: 32px; object-fit: contain; display: block; pointer-events: none;" />
         </div>
         <span class="menu-label">Profile</span>
       </a>
@@ -880,74 +1179,29 @@
        8. JAVASCRIPT: 500 LEVELS ENGINE, REAL-TIME DATA & CLAIM LOGIC
        ====================================================================== -->
   <script>
-    // Game State (Max Level 5000)
-    const MAX_TASK_PASS_LEVEL = 5000;
+    // Game State (Season Pass Levels 1 to 500)
+    const MAX_TASK_PASS_LEVEL = 500;
 
     // Calculate target tasks required for any given level (1 task = 1 level with its winning prize)
     function getTargetForLevel(level) {
       return 1;
     }
 
-    // Custom Game SVG Icons matching the reference Coin Sack / Ticket / Star style
+    // Custom Game SVG Icons referencing shared document-level gradients
     const TASK_PASS_SVGS = {
       coin: `<svg viewBox="0 0 64 64" width="52" height="52" style="width: 52px; height: 52px; display: block;">
-      <defs>
-        <radialGradient id="coinGrad" cx="35%" cy="30%" r="65%">
-          <stop offset="0%" stop-color="#fff59d"/>
-          <stop offset="35%" stop-color="#facc15"/>
-          <stop offset="70%" stop-color="#eab308"/>
-          <stop offset="100%" stop-color="#ca8a04"/>
-        </radialGradient>
-        <linearGradient id="coinRim" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#fef08a"/>
-          <stop offset="100%" stop-color="#854d0e"/>
-        </linearGradient>
-        <linearGradient id="coinInner" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stop-color="#fef9c3"/>
-          <stop offset="50%" stop-color="#f59e0b"/>
-          <stop offset="100%" stop-color="#b45309"/>
-        </linearGradient>
-      </defs>
       <circle cx="32" cy="32" r="27" fill="url(#coinGrad)" stroke="#111318" stroke-width="3.5"/>
       <circle cx="32" cy="32" r="21" fill="url(#coinInner)" stroke="url(#coinRim)" stroke-width="2.5"/>
       <polygon points="32,18 35.5,26 44,27 37.5,33 39.5,41.5 32,37 24.5,41.5 26.5,33 20,27 28.5,26" fill="#fffbeb" stroke="#b45309" stroke-width="1.5"/>
       <path d="M16 26 A20 20 0 0 1 40 14" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" opacity="0.85"/>
     </svg>`,
       coinBag: `<svg viewBox="0 0 64 64" width="52" height="52" style="width: 52px; height: 52px; display: block;">
-      <defs>
-        <radialGradient id="coinGrad" cx="35%" cy="30%" r="65%">
-          <stop offset="0%" stop-color="#fff59d"/>
-          <stop offset="35%" stop-color="#facc15"/>
-          <stop offset="70%" stop-color="#eab308"/>
-          <stop offset="100%" stop-color="#ca8a04"/>
-        </radialGradient>
-        <linearGradient id="coinRim" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#fef08a"/>
-          <stop offset="100%" stop-color="#854d0e"/>
-        </linearGradient>
-        <linearGradient id="coinInner" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stop-color="#fef9c3"/>
-          <stop offset="50%" stop-color="#f59e0b"/>
-          <stop offset="100%" stop-color="#b45309"/>
-        </linearGradient>
-      </defs>
       <circle cx="32" cy="32" r="27" fill="url(#coinGrad)" stroke="#111318" stroke-width="3.5"/>
       <circle cx="32" cy="32" r="21" fill="url(#coinInner)" stroke="url(#coinRim)" stroke-width="2.5"/>
       <polygon points="32,18 35.5,26 44,27 37.5,33 39.5,41.5 32,37 24.5,41.5 26.5,33 20,27 28.5,26" fill="#fffbeb" stroke="#b45309" stroke-width="1.5"/>
       <path d="M16 26 A20 20 0 0 1 40 14" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" opacity="0.85"/>
     </svg>`,
       ticket: `<svg viewBox="0 0 64 64" width="52" height="52" style="width: 52px; height: 52px; display: block;">
-      <defs>
-        <linearGradient id="ticketGrad" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stop-color="#ff4d4d"/>
-          <stop offset="45%" stop-color="#ef4444"/>
-          <stop offset="100%" stop-color="#b91c1c"/>
-        </linearGradient>
-        <linearGradient id="ticketInnerGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#fef08a"/>
-          <stop offset="100%" stop-color="#f59e0b"/>
-        </linearGradient>
-      </defs>
       <g transform="rotate(-8 32 32)">
         <path d="M10 18 H54 V27 A5 5 0 0 0 54 37 V46 H10 V37 A5 5 0 0 0 10 27 Z" fill="url(#ticketGrad)" stroke="#111318" stroke-width="3.5" stroke-linejoin="round"/>
         <rect x="18" y="24" width="28" height="16" rx="4" fill="url(#ticketInnerGrad)" stroke="#111318" stroke-width="2.5"/>
@@ -956,30 +1210,25 @@
       </g>
     </svg>`,
       star: `<svg viewBox="0 0 64 64" width="52" height="52" style="width: 52px; height: 52px; display: block;">
-      <defs>
-        <radialGradient id="starGlow" cx="40%" cy="35%" r="65%">
-          <stop offset="0%" stop-color="#ffffff"/>
-          <stop offset="25%" stop-color="#fef08a"/>
-          <stop offset="60%" stop-color="#facc15"/>
-          <stop offset="100%" stop-color="#eab308"/>
-        </radialGradient>
-        <linearGradient id="starShade" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#f59e0b"/>
-          <stop offset="100%" stop-color="#b45309"/>
-        </linearGradient>
-      </defs>
       <polygon points="32,6 40,22 57,24 44.5,36 47.5,53 32,44.5 16.5,53 19.5,36 7,24 24,22"
         fill="url(#starGlow)" stroke="#111318" stroke-width="3.8" stroke-linejoin="round"/>
       <polygon points="32,13 37.5,23.5 48.5,25 40,33 42,44.5 32,39 22,44.5 24,33 15.5,25 26.5,23.5"
         fill="#fef08a" stroke="#ca8a04" stroke-width="1.5" stroke-linejoin="round"/>
       <polygon points="32,18 35,25 42,26 36.5,31 38,38 32,34.5 26,38 27.5,31 22,26 29,25"
         fill="#ffffff" opacity="0.9"/>
+    </svg>`,
+      diamond: `<svg viewBox="0 0 64 64" width="52" height="52" style="width: 52px; height: 52px; display: block;">
+      <polygon points="16,12 48,12 58,26 32,54 6,26" fill="#06b6d4" stroke="#111318" stroke-width="3.6" stroke-linejoin="round"/>
+      <polygon points="16,12 48,12 40,26 24,26" fill="#a5f3fc"/>
+      <polygon points="24,26 40,26 32,54" fill="#38bdf8"/>
+      <polygon points="6,26 24,26 32,54" fill="#0284c7"/>
     </svg>`
     };
 
     // Determine exact reward for a given level (500-Level Task Pass matching Excel up to 5,000 Levels):
     // - Odd levels (1, 3, 5, 7, 9, 11...): 1000 + floor((level-1)/10)*100 Coins 🪙
-    // - Even non-tenth levels (2, 4, 6, 8, 12...): 5 + floor((level-1)/10)*5 Tickets 🎟️
+    // - Even levels ending in 4 or 8 (4, 8, 14, 18, 24, 28...): 5 + floor((level-1)/10)*5 Diamonds 💎
+    // - Remaining even levels ending in 2 or 6 (2, 6, 12, 16, 22, 26...): 5 + floor((level-1)/10)*5 Tickets 🎟️
     // - Tenth levels (10, 20, 30... 5000): 100 + (floor(level/10)-1)*25 Stars ⭐
     function getLevelReward(level) {
       level = parseInt(level, 10);
@@ -1003,14 +1252,25 @@
           popText: `+${starAmount.toLocaleString()} STARS ⭐`
         };
       } else if (level % 2 === 0) {
-        const ticketAmount = 5 + bandIndex * 5;
+        const evenAmount = 5 + bandIndex * 5;
+        const isDiamondLevel = (level % 10 === 4 || level % 10 === 8);
+        if (isDiamondLevel) {
+          return {
+            type: 'diamonds',
+            amount: evenAmount,
+            iconSvg: TASK_PASS_SVGS.diamond || TASK_PASS_SVGS.star,
+            tag: `Level ${level} • Target: ${target} ${taskWord}`,
+            title: `Complete ${target} ${taskWord} to Win ${evenAmount.toLocaleString()} Diamonds 💎`,
+            popText: `+${evenAmount.toLocaleString()} DIAMONDS 💎`
+          };
+        }
         return {
           type: 'tickets',
-          amount: ticketAmount,
+          amount: evenAmount,
           iconSvg: TASK_PASS_SVGS.ticket || TASK_PASS_SVGS.coin,
           tag: `Level ${level} • Target: ${target} ${taskWord}`,
-          title: `Complete ${target} ${taskWord} to Win ${ticketAmount.toLocaleString()} Tickets 🎟️`,
-          popText: `+${ticketAmount.toLocaleString()} TICKETS 🎟️`
+          title: `Complete ${target} ${taskWord} to Win ${evenAmount.toLocaleString()} Tickets 🎟️`,
+          popText: `+${evenAmount.toLocaleString()} TICKETS 🎟️`
         };
       } else {
         const coinAmount = 1000 + bandIndex * 100;
@@ -1083,7 +1343,7 @@
           statusClass = "status-current";
         }
 
-        const emoji = reward.type === "stars" ? "⭐" : (reward.type === "tickets" ? "🎟️" : "🪙");
+        const emoji = reward.type === "stars" ? "⭐" : (reward.type === "diamonds" ? "💎" : (reward.type === "tickets" ? "🎟️" : "🪙"));
 
         html += `
           <div class="${cardClass}" id="levelStripCard_${lvl}" title="Level ${lvl}: Complete 1 task to win ${reward.amount} ${emoji}">
@@ -1187,6 +1447,15 @@
         if (window.userTickets !== undefined) window.userTickets = curTickets;
         const ticketDisplay = document.getElementById("userTicketsDisplay") || document.getElementById("hudTickets");
         if (ticketDisplay) ticketDisplay.textContent = curTickets.toLocaleString();
+      } else if (rewardWon.type === "diamonds") {
+        let curDiamonds = parseInt(localStorage.getItem("task_user_diamonds") || localStorage.getItem("user_diamonds") || "0", 10) || 0;
+        curDiamonds += rewardWon.amount;
+        localStorage.setItem("task_user_diamonds", curDiamonds.toString());
+        localStorage.setItem("user_diamonds", curDiamonds.toString());
+        if (typeof state !== 'undefined') state.diamonds = curDiamonds;
+        if (window.userDiamonds !== undefined) window.userDiamonds = curDiamonds;
+        const diamondDisplay = document.getElementById("userDiamondsDisplay") || document.getElementById("hudDiamonds");
+        if (diamondDisplay) diamondDisplay.textContent = curDiamonds.toLocaleString();
       } else {
         let curCoins = parseInt(localStorage.getItem("task_game_coins") || localStorage.getItem("user_coins") || "0", 10);
         curCoins += rewardWon.amount;
@@ -1238,7 +1507,7 @@
       };
     }
 
-    let roadmapDisplayMax = 50;
+    let roadmapDisplayMax = MAX_TASK_PASS_LEVEL;
 
     function renderRoadmapLevels(maxLimit) {
       const listContainer = document.getElementById("roadmapLevelsList");
@@ -1246,7 +1515,7 @@
 
       const currentLevel = parseInt(localStorage.getItem("task_pass_level") || (typeof state !== 'undefined' ? state.currentLevel : 1) || "1", 10);
       const totalCompleted = parseInt(localStorage.getItem("task_pass_total_completed") || (typeof state !== 'undefined' ? state.completedTasks : 0) || "0", 10);
-      roadmapDisplayMax = Math.min(MAX_TASK_PASS_LEVEL, maxLimit || 50);
+      roadmapDisplayMax = Math.min(MAX_TASK_PASS_LEVEL, maxLimit || MAX_TASK_PASS_LEVEL);
 
       let listHtml = "";
 
@@ -1256,8 +1525,8 @@
         const isCurrent = lvl === currentLevel;
         const isMilestone = (lvl % 10 === 0);
 
-        const emoji = reward.type === "stars" ? "⭐" : (reward.type === "tickets" ? "🎟️" : "🪙");
-        const rewardName = reward.type === "stars" ? "Stars" : (reward.type === "tickets" ? "Tickets" : "Coins");
+        const emoji = reward.type === "stars" ? "⭐" : (reward.type === "diamonds" ? "💎" : (reward.type === "tickets" ? "🎟️" : "🪙"));
+        const rewardName = reward.type === "stars" ? "Stars" : (reward.type === "diamonds" ? "Diamonds" : (reward.type === "tickets" ? "Tickets" : "Coins"));
 
         let rowClass = "roadmap-level-row";
         if (isMilestone) rowClass += " milestone-row";
@@ -1294,21 +1563,11 @@
         `;
       }
 
-      if (roadmapDisplayMax < MAX_TASK_PASS_LEVEL) {
-        listHtml += `
-          <div style="text-align: center; padding: 12px 6px;">
-            <button type="button" onclick="loadMoreRoadmapLevels()" style="width: 100%; background: linear-gradient(135deg, rgba(56, 189, 248, 0.2) 0%, rgba(14, 165, 233, 0.2) 100%); border: 1.5px solid rgba(56, 189, 248, 0.45); color: #38bdf8; font-weight: 800; font-size: 0.85rem; padding: 10px 16px; border-radius: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">
-              <span>⚡ Load Next 50 Levels (Showing ${roadmapDisplayMax} of 5,000)</span>
-            </button>
-          </div>
-        `;
-      }
-
       listContainer.innerHTML = listHtml;
     }
 
     function loadMoreRoadmapLevels() {
-      renderRoadmapLevels(roadmapDisplayMax + 50);
+      renderRoadmapLevels(MAX_TASK_PASS_LEVEL);
     }
 
     function openTaskPassRoadmapModal(targetLevel) {
@@ -1394,6 +1653,7 @@
       coins: parseInt(localStorage.getItem("task_game_coins") || localStorage.getItem("user_coins") || "0", 10),
       stars: parseInt(localStorage.getItem("task_game_stars") || localStorage.getItem("user_stars") || "0", 10),
       tickets: parseInt(localStorage.getItem("task_user_tickets") || localStorage.getItem("user_tickets") || localStorage.getItem("task_game_tickets") || "0", 10),
+      diamonds: parseInt(localStorage.getItem("task_user_diamonds") || localStorage.getItem("user_diamonds") || "0", 10) || 0,
       currentLevel: parseInt(localStorage.getItem("task_pass_level") || "0", 10),
       completedTasks: parseInt(localStorage.getItem("task_pass_total_completed") || "0", 10),
       passActivated: (localStorage.getItem("season_6_pass_activated") === "true"),
@@ -1426,6 +1686,7 @@
           coins: 0,
           stars: freeStars,
           tickets: 0,
+          diamonds: 0,
           desc: "Level " + tier + " Star Milestone: +" + freeStars.toLocaleString() + " Stars! (Watch Ad 📺)"
         };
         pass = {
@@ -1436,34 +1697,64 @@
           coins: 0,
           stars: excelStars,
           tickets: 0,
+          diamonds: 0,
           desc: (tier >= 500)
             ? "VIP Grand Finale Tier " + tier + ": +5,000 Stars! (Exclusive to Pass Buyers)"
             : ("VIP Milestone Pass Tier " + tier + ": +" + excelStars.toLocaleString() + " Stars! (Premium Pass)")
         };
       } else if (tier % 2 === 0) {
-        // Excel 500-level ticket reward (even levels) -> PREMIUM PASS
-        const excelTickets = 5 + bandIndex * 5;
-        const freeTickets = Math.max(1, Math.floor(excelTickets / 2)); // 2 at 2-8, 5 at 12-18...
-        free = {
-          tier: tier,
-          type: "tickets",
-          emoji: "🎟️",
-          title: freeTickets.toLocaleString() + " Tickets",
-          coins: 0,
-          stars: 0,
-          tickets: freeTickets,
-          desc: "Level " + tier + " Free Reward: +" + freeTickets.toLocaleString() + " Tickets! (Watch Ad 📺)"
-        };
-        pass = {
-          tier: tier,
-          type: "tickets",
-          emoji: "🎟️",
-          title: excelTickets.toLocaleString() + " Tickets",
-          coins: 0,
-          stars: 0,
-          tickets: excelTickets,
-          desc: "VIP Pass Tier " + tier + ": +" + excelTickets.toLocaleString() + " Event & Spin Tickets! (Premium Pass)"
-        };
+        // Levels ending in 4 & 8 (4, 8, 14, 18, 24, 28...) -> Diamonds (same numeric values)
+        // Levels ending in 2 & 6 (2, 6, 12, 16, 22, 26...) -> Tickets
+        const excelEvenVal = 5 + bandIndex * 5;
+        const freeEvenVal = Math.max(1, Math.floor(excelEvenVal / 2)); // 2 at 2-8, 5 at 12-18...
+        const isDiamondTier = (tier % 10 === 4 || tier % 10 === 8);
+        if (isDiamondTier) {
+          free = {
+            tier: tier,
+            type: "diamonds",
+            emoji: "💎",
+            title: freeEvenVal.toLocaleString() + " Diamonds",
+            coins: 0,
+            stars: 0,
+            tickets: 0,
+            diamonds: freeEvenVal,
+            desc: "Level " + tier + " Free Reward: +" + freeEvenVal.toLocaleString() + " Diamonds! (Watch Ad 📺)"
+          };
+          pass = {
+            tier: tier,
+            type: "diamonds",
+            emoji: "💎",
+            title: excelEvenVal.toLocaleString() + " Diamonds",
+            coins: 0,
+            stars: 0,
+            tickets: 0,
+            diamonds: excelEvenVal,
+            desc: "VIP Pass Tier " + tier + ": +" + excelEvenVal.toLocaleString() + " Pass Diamonds! (Premium Pass)"
+          };
+        } else {
+          free = {
+            tier: tier,
+            type: "tickets",
+            emoji: "🎟️",
+            title: freeEvenVal.toLocaleString() + " Tickets",
+            coins: 0,
+            stars: 0,
+            tickets: freeEvenVal,
+            diamonds: 0,
+            desc: "Level " + tier + " Free Reward: +" + freeEvenVal.toLocaleString() + " Tickets! (Watch Ad 📺)"
+          };
+          pass = {
+            tier: tier,
+            type: "tickets",
+            emoji: "🎟️",
+            title: excelEvenVal.toLocaleString() + " Tickets",
+            coins: 0,
+            stars: 0,
+            tickets: excelEvenVal,
+            diamonds: 0,
+            desc: "VIP Pass Tier " + tier + ": +" + excelEvenVal.toLocaleString() + " Event & Spin Tickets! (Premium Pass)"
+          };
+        }
       } else {
         // Excel 500-level coin reward (odd levels) -> PREMIUM PASS
         const excelCoins = 1000 + bandIndex * 100;
@@ -1476,6 +1767,7 @@
           coins: freeCoins,
           stars: 0,
           tickets: 0,
+          diamonds: 0,
           desc: "Level " + tier + " Free Reward: +" + freeCoins.toLocaleString() + " Coins! (Watch Ad 📺)"
         };
         pass = {
@@ -1486,6 +1778,7 @@
           coins: excelCoins,
           stars: 0,
           tickets: 0,
+          diamonds: 0,
           desc: "VIP Pass Tier " + tier + ": +" + excelCoins.toLocaleString() + " Gold Coins! (Premium Pass)"
         };
       }
@@ -1498,13 +1791,16 @@
       state.coins = parseInt(localStorage.getItem("task_game_coins") || localStorage.getItem("user_coins") || "0", 10);
       state.stars = parseInt(localStorage.getItem("task_game_stars") || localStorage.getItem("user_stars") || "0", 10);
       state.tickets = parseInt(localStorage.getItem("task_user_tickets") || localStorage.getItem("user_tickets") || localStorage.getItem("task_game_tickets") || "0", 10);
+      state.diamonds = parseInt(localStorage.getItem("task_user_diamonds") || localStorage.getItem("user_diamonds") || "0", 10) || 0;
 
       const c = document.getElementById("hudCoins");
       const s = document.getElementById("hudStars");
       const t = document.getElementById("hudTickets");
+      const dm = document.getElementById("hudDiamonds");
       if (c) c.textContent = state.coins.toLocaleString();
       if (s) s.textContent = state.stars.toLocaleString();
       if (t) t.textContent = state.tickets.toLocaleString();
+      if (dm) dm.textContent = state.diamonds.toLocaleString();
 
       const savedName = localStorage.getItem("player_username");
       const nameEl = document.getElementById("headerUserName") || document.querySelector(".user-name");
@@ -1513,13 +1809,21 @@
       }
 
       const avatarEl = document.getElementById("headerUserAvatar") || document.querySelector(".user-avatar");
-      if (avatarEl) {
-        avatarEl.textContent = localStorage.getItem("player_avatar") || '⚡';
+      if (avatarEl && avatarEl.tagName !== 'BUTTON') {
+        const rawAv = localStorage.getItem("player_avatar") || 'avatar-1.png';
+        if (typeof window.renderPlayerAvatarEl === 'function') {
+          window.renderPlayerAvatarEl(avatarEl, rawAv, 36);
+        } else {
+          const m = String(rawAv).match(/avatar-([1-8])\.png/i);
+          avatarEl.style.background = 'transparent';
+          avatarEl.style.border = 'none';
+          avatarEl.innerHTML = `<img src="../../assets/avatars/${m ? 'avatar-' + m[1] + '.png' : 'avatar-1.png'}" alt="Avatar" class="sticker-3d-avatar-img" style="width:36px;height:36px;object-fit:contain;display:block;" />`;
+        }
       }
 
       const rankEl = document.getElementById("userRankDisplay") || document.getElementById("headerPassLevel");
       if (rankEl) {
-        rankEl.textContent = "RANK #1";
+        rankEl.textContent = "LVL " + (state.currentLevel || 0) + "/" + MAX_TIERS;
       }
 
       const streakEl = document.getElementById("userStreakDisplay");
@@ -1536,7 +1840,7 @@
 
     // Keep HUD in sync with any central balance updates
     window.addEventListener('storage', (e) => {
-      if (['task_game_coins', 'user_coins', 'task_game_stars', 'user_stars', 'task_user_tickets', 'user_tickets', 'task_game_tickets'].includes(e.key)) {
+      if (['task_game_coins', 'user_coins', 'task_game_stars', 'user_stars', 'task_user_tickets', 'user_tickets', 'task_game_tickets', 'task_user_diamonds', 'user_diamonds'].includes(e.key)) {
         updateHUD();
       }
     });
@@ -1590,9 +1894,11 @@
       // Render Horizontal Level Cards Strip (Level-wise claiming of rewards)
       renderHorizontalLevelTrack();
 
-      // Pass Toggle Button & Dot
+      // Arcade Pass Toggle Button & Header Dot
       const btn = document.getElementById("btnTogglePass");
       const heroPassBtn = document.getElementById("btnToggleSeasonPass");
+      const btnTextSpan = document.getElementById("activate-btn-text");
+      const modalActLabel = document.getElementById("modal-activate-label");
       const dot = document.getElementById("passActiveDot");
       const label = document.getElementById("passBtnLabel");
       if (state.passActivated) {
@@ -1601,12 +1907,10 @@
           btn.title = "Season Pass Active";
         }
         if (heroPassBtn) {
-          heroPassBtn.className = "btn-toggle-pass-green";
-          heroPassBtn.textContent = "Pass Active ✓";
-          heroPassBtn.style.background = "linear-gradient(135deg, #10b981 0%, #059669 100%)";
-          heroPassBtn.style.color = "#ffffff";
-          heroPassBtn.style.borderColor = "#34d399";
+          heroPassBtn.className = "btn-game btn-green py-2 px-3 flex items-center justify-center gap-1.5";
         }
+        if (btnTextSpan) btnTextSpan.textContent = "Activated ✓";
+        if (modalActLabel) modalActLabel.textContent = "Activated ✓";
         if (label) label.textContent = "Pass Active ✓";
         if (dot) dot.classList.remove("hidden");
       } else {
@@ -1615,12 +1919,10 @@
           btn.title = "Activate Season Pass for 3,000 Stars";
         }
         if (heroPassBtn) {
-          heroPassBtn.className = "btn-toggle-pass-amber";
-          heroPassBtn.textContent = "⚡ Activate Pass (3,000 ⭐)";
-          heroPassBtn.style.background = "linear-gradient(135deg, #facc15 0%, #d97706 100%)";
-          heroPassBtn.style.color = "#422006";
-          heroPassBtn.style.borderColor = "#facc15";
+          heroPassBtn.className = "btn-game btn-yellow py-2 px-3 flex items-center justify-center gap-1.5";
         }
+        if (btnTextSpan) btnTextSpan.textContent = "Activate (3,000 ⭐)";
+        if (modalActLabel) modalActLabel.textContent = "Activate (3,000 ⭐)";
         if (label) label.textContent = "Activate Pass (3,000 ⭐)";
         if (dot) dot.classList.add("hidden");
       }
@@ -1670,65 +1972,86 @@
       }
     }
 
-    function confirmActivateSeasonPassWithStars() {
+    async function confirmActivateSeasonPassWithStars() {
       const confirmBtn = document.getElementById("btnConfirmActivatePass");
       if (confirmBtn && confirmBtn.disabled) return;
       if (confirmBtn) {
         confirmBtn.disabled = true;
         confirmBtn.classList.add("loading");
-        setTimeout(() => {
+      }
+
+      try {
+        if (state.passActivated) {
+          closeActivatePassModal();
+          showToast("⚡ Season Pass is already active! ✓");
+          return;
+        }
+
+        const currentStars = parseInt(localStorage.getItem("task_game_stars") || localStorage.getItem("user_stars") || "0", 10) || 0;
+        if (currentStars < PASS_STAR_PRICE) {
+          closeActivatePassModal();
+          showToast("❌ Need 3,000 ⭐ Stars to activate Pass! (You have: " + currentStars.toLocaleString() + " ⭐)");
+          alert("❌ Insufficient Stars!\n\nSeason Battle Pass costs 3,000 ⭐ Stars.\nYou currently have " + currentStars.toLocaleString() + " ⭐ Stars.\n\nEarn more Stars from Star Tasks or the Shop to activate the Pass!");
+          return;
+        }
+
+        let newStars = currentStars - PASS_STAR_PRICE;
+        if (window.Firebase && typeof window.Firebase.atomicBalanceMutation === 'function') {
+          const mut = await window.Firebase.atomicBalanceMutation({
+            deltaStars: -PASS_STAR_PRICE,
+            reason: 'Activated Season Battle Pass',
+            txId: `season_pass_activate_${Date.now()}`
+          });
+          if (!mut.ok) {
+            closeActivatePassModal();
+            alert(`❌ ${mut.error || 'Could not deduct Stars.'}`);
+            return;
+          }
+          newStars = mut.stars;
+        } else {
+          localStorage.setItem("task_game_stars", newStars.toString());
+          localStorage.setItem("user_stars", newStars.toString());
+          if (window.firebaseSync && typeof window.firebaseSync.setStars === 'function') {
+            window.firebaseSync.setStars(newStars);
+          }
+        }
+
+        state.stars = newStars;
+        state.passActivated = true;
+        localStorage.setItem("season_6_pass_activated", "true");
+        if (typeof window.saveCurrentProfileToFirestore === 'function') {
+          try { window.saveCurrentProfileToFirestore(); } catch(e) {}
+        }
+
+        closeActivatePassModal();
+        if (typeof window.updateAllDomBalances === 'function') window.updateAllDomBalances(state.coins, newStars, state.tickets, state.diamonds || 0);
+        if (typeof spawnConfetti === 'function') spawnConfetti();
+        updateHUD();
+        updateTaskPassWidget();
+        renderTiers();
+
+        showToast("🎉 Season Pass Activated for 3,000 ⭐! All Golden Locks Opened!");
+
+        try {
+          const bc = new BroadcastChannel('nova_task_sync');
+          bc.postMessage({ type: 'PASS_ACTIVATED', timestamp: Date.now() });
+          bc.postMessage({ type: 'BALANCES_UPDATED', coins: state.coins, stars: newStars, tickets: state.tickets, diamonds: state.diamonds || 0, timestamp: Date.now() });
+          bc.close();
+        } catch(e) {}
+
+        try {
+          const bSync = new BroadcastChannel('balance_sync_channel');
+          bSync.postMessage({ type: 'BALANCE_UPDATED', coins: state.coins, stars: newStars, tickets: state.tickets, diamonds: state.diamonds || 0 });
+          bSync.close();
+        } catch(e) {}
+
+        window.dispatchEvent(new Event('balance:changed'));
+      } finally {
+        if (confirmBtn) {
           confirmBtn.disabled = false;
           confirmBtn.classList.remove("loading");
-        }, 1500);
+        }
       }
-
-      if (state.passActivated) {
-        closeActivatePassModal();
-        showToast("⚡ Season Pass is already active! ✓");
-        return;
-      }
-
-      const currentStars = parseInt(localStorage.getItem("task_game_stars") || localStorage.getItem("user_stars") || "0", 10) || 0;
-      if (currentStars < PASS_STAR_PRICE) {
-        closeActivatePassModal();
-        showToast("❌ Need 3,000 ⭐ Stars to activate Pass! (You have: " + currentStars.toLocaleString() + " ⭐)");
-        alert("❌ Insufficient Stars!\n\nSeason Battle Pass costs 3,000 ⭐ Stars.\nYou currently have " + currentStars.toLocaleString() + " ⭐ Stars.\n\nEarn more Stars from Star Tasks or the Shop to activate the Pass!");
-        return;
-      }
-
-      // Deduct exactly 3000 stars
-      const newStars = currentStars - PASS_STAR_PRICE;
-      state.stars = newStars;
-      localStorage.setItem("task_game_stars", newStars.toString());
-      localStorage.setItem("user_stars", newStars.toString());
-      if (window.firebaseSync && typeof window.firebaseSync.setStars === 'function') {
-        window.firebaseSync.setStars(newStars);
-      }
-
-      state.passActivated = true;
-      localStorage.setItem("season_6_pass_activated", "true");
-
-      closeActivatePassModal();
-      updateHUD();
-      updateTaskPassWidget();
-      renderTiers();
-
-      showToast("🎉 Season Pass Activated for 3,000 ⭐! All Golden Locks Opened!");
-
-      try {
-        const bc = new BroadcastChannel('nova_task_sync');
-        bc.postMessage({ type: 'PASS_ACTIVATED', timestamp: Date.now() });
-        bc.postMessage({ type: 'BALANCES_UPDATED', coins: state.coins, stars: newStars, tickets: state.tickets, timestamp: Date.now() });
-        bc.close();
-      } catch(e) {}
-
-      try {
-        const bSync = new BroadcastChannel('balance_sync_channel');
-        bSync.postMessage({ type: 'BALANCE_UPDATED', coins: state.coins, stars: newStars, tickets: state.tickets });
-        bSync.close();
-      } catch(e) {}
-
-      window.dispatchEvent(new Event('balance:changed'));
     }
 
     // Toggle Pass Activation / Open Purchase Modal (Costs 3,000 Stars)
@@ -1778,7 +2101,7 @@
         const rewardData = getTierReward(lvl);
         const rewardItem = (lvl % 2 === 0) ? rewardData.pass : rewardData.free;
         const icon = rewardItem.emoji || "⭐";
-        const amount = rewardItem.coins || rewardItem.stars || rewardItem.tickets || 100;
+        const amount = rewardItem.coins || rewardItem.stars || rewardItem.tickets || rewardItem.diamonds || 100;
 
         let cardClass = "level-strip-card";
         if (isCurrent) cardClass += " active";
@@ -1806,15 +2129,86 @@
       container.innerHTML = html;
     }
 
-    // Build and Render all 500 Tiers
+    // Continuous Tier Rendering (All 1 to 500 Levels rendered continuously)
+    let visibleMaxTier = MAX_TIERS;
+
+    function loadMorePassTiers() {
+      visibleMaxTier = MAX_TIERS;
+      renderTiers();
+    }
+    window.loadMorePassTiers = loadMorePassTiers;
+
+    function spawnConfetti() {
+      const colors = ['#fde047', '#38bdf8', '#22c55e', '#f97316', '#e879f9', '#ffffff'];
+      const centerX = window.innerWidth / 2;
+      for (let i = 0; i < 24; i++) {
+        const piece = document.createElement('div');
+        piece.className = 'confetti-piece';
+        const offsetX = (Math.random() - 0.5) * 240;
+        const driftX = (Math.random() - 0.5) * 140;
+        piece.style.left = `${centerX + offsetX}px`;
+        piece.style.top = `${140 + Math.random() * 50}px`;
+        piece.style.backgroundColor = colors[i % colors.length];
+        piece.style.setProperty('--tx', `${driftX}px`);
+        piece.style.animationDelay = `${Math.random() * 0.16}s`;
+        document.body.appendChild(piece);
+        setTimeout(() => piece.remove(), 1400);
+      }
+    }
+
+    function openPreviewModal() {
+      const m = document.getElementById('preview-modal');
+      if (m) m.classList.remove('hidden');
+    }
+
+    function closePreviewModal() {
+      const m = document.getElementById('preview-modal');
+      if (m) m.classList.add('hidden');
+    }
+
+    function activateFromModal() {
+      closePreviewModal();
+      openActivatePassModal();
+    }
+
+    function getPassRewardSvg(track, reward, tier) {
+      let src = 'assets/chest-coins-free.png';
+      let alt = 'Coins Chest';
+      if (reward.type === 'stars') {
+        if (track === 'pass' && tier >= 100) {
+          src = 'assets/chest-mega-pass.png';
+          alt = 'Legendary Star Chest';
+        } else {
+          src = track === 'pass' ? 'assets/bag-stars-pass.png' : 'assets/bag-stars-free.png';
+          alt = track === 'pass' ? 'Gold Stars Pouch' : 'Blue Stars Pouch';
+        }
+      } else if (reward.type === 'tickets') {
+        src = track === 'pass' ? 'assets/chest-tickets-pass.png' : 'assets/chest-tickets-free.png';
+        alt = track === 'pass' ? 'Sapphire Tickets Chest' : 'Iron Tickets Chest';
+      } else if (reward.type === 'diamonds') {
+        src = track === 'pass' ? 'assets/chest-diamonds-pass.png' : 'assets/chest-diamonds-free.png';
+        alt = track === 'pass' ? 'Royal Diamonds Chest' : 'Crystal Diamonds Chest';
+      } else {
+        src = track === 'pass' ? 'assets/chest-coins-pass.png' : 'assets/chest-coins-free.png';
+        alt = track === 'pass' ? 'Royal Coins Chest' : 'Wooden Coins Chest';
+      }
+      const loadingAttr = tier > 12 ? 'loading="lazy"' : 'loading="eager"';
+      return `<img src="${src}" alt="${alt}" ${loadingAttr} decoding="async" class="w-16 h-16 sm:w-20 sm:h-20 object-contain drop-shadow-[0_4px_6px_rgba(0,0,0,0.45)] pointer-events-none select-none" style="background: transparent; border: none; border-radius: 0; box-shadow: none;" />`;
+    }
+
     function renderTiers() {
       const container = document.getElementById("tiersContainer");
       if (!container) return;
 
       const currentLvl = state.currentLevel;
+      visibleMaxTier = MAX_TIERS;
+      const renderLimit = MAX_TIERS;
+      const checkSvg = `<svg viewBox="0 0 36 36" class="w-full h-full"><path d="M7 18.5l7 7L29 10.5" fill="none" stroke="#11131e" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" /><path d="M7 18.5l7 7L29 10.5" fill="none" stroke="#22c55e" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" /></svg>`;
+      const lockSvg = `<svg viewBox="0 0 36 42" class="w-full h-full"><path d="M11 18v-5a7 7 0 0114 0v5" fill="none" stroke="#11131e" stroke-width="6.5" stroke-linecap="round" /><path d="M11 18v-5a7 7 0 0114 0v5" fill="none" stroke="#fde047" stroke-width="3" stroke-linecap="round" /><rect x="6" y="17" width="24" height="20" rx="5" fill="#fbbf24" stroke="#11131e" stroke-width="3" /><circle cx="18" cy="25" r="2.5" fill="#11131e" /><path d="M18 26v4" stroke="#11131e" stroke-width="2.5" stroke-linecap="round" /></svg>`;
+
       let html = "";
 
-      for (let t = 1; t <= MAX_TIERS; t++) {
+      for (let t = 1; t <= renderLimit; t++) {
         const data = getTierReward(t);
         const reached = t <= currentLvl;
         const isCurrent = t === currentLvl;
@@ -1824,74 +2218,89 @@
         const freeClaimed = !!state.claimed[freeKey];
         const passClaimed = !!state.claimed[passKey];
 
-        let rowClass = "tier-row";
-        if (reached) rowClass += " reached";
-        if (isCurrent) rowClass += " current";
+        const badgeBg = reached
+          ? "bg-gradient-to-b from-[#ffe436] to-[#f59e0b]"
+          : "bg-gradient-to-b from-[#2f354a] to-[#1a1e2b]";
 
-        // Free card status pill
-        let freePill = '<span class="card-status-pill pill-locked">🔒 Level ' + t + '</span>';
-        if (freeClaimed) {
-          freePill = '<span class="card-status-pill pill-claimed">Claimed ✓</span>';
-        } else if (reached) {
-          freePill = '<span class="card-status-pill pill-ad">Watch Ad 📺</span>';
-        }
+        const freeAmt = (data.free.coins || data.free.stars || data.free.tickets || data.free.diamonds || 0).toLocaleString();
+        const freeUnit = data.free.type === 'stars' ? '⭐' : (data.free.type === 'diamonds' ? '💎' : (data.free.type === 'tickets' ? '🎟️' : '🪙'));
+        const freeActionBadge = freeClaimed
+          ? `<div class="absolute -top-2 -right-2 w-7 h-7 z-20 drop-shadow">${checkSvg}</div>`
+          : (reached
+              ? `<span class="absolute top-1.5 left-1.5 z-20 px-1.5 py-0.5 rounded-md bg-[#10b981] border border-[#11131e] font-ui font-extrabold text-[9px] text-white">Watch Ad 📺</span>`
+              : `<span class="absolute top-1.5 left-1.5 z-20 px-1.5 py-0.5 rounded-md bg-[#0f172a]/85 border border-[#11131e] font-ui font-bold text-[9px] text-slate-300">🔒 Lvl ${t}</span>`);
 
-        // Pass card status pill
-        let passPill = '<span class="card-status-pill pill-locked">🔒 Lock</span>';
-        if (passClaimed) {
-          passPill = '<span class="card-status-pill pill-claimed">Claimed ✓</span>';
-        } else if (reached && state.passActivated) {
-          passPill = '<span class="card-status-pill pill-claim">Claim ⭐</span>';
-        } else if (reached && !state.passActivated) {
-          passPill = '<span class="card-status-pill pill-locked">🔒 Need Pass</span>';
-        }
+        const passAmt = (data.pass.coins || data.pass.stars || data.pass.tickets || data.pass.diamonds || 0).toLocaleString();
+        const passUnit = data.pass.type === 'stars' ? '⭐' : (data.pass.type === 'diamonds' ? '💎' : (data.pass.type === 'tickets' ? '🎟️' : '🪙'));
+        const passTopBadge = passClaimed
+          ? `<div class="absolute -top-2 -right-2 w-7 h-7 z-20 drop-shadow">${checkSvg}</div>`
+          : `<div class="padlock-badge ${state.passActivated ? 'padlock-unlocked' : ''} absolute -top-2.5 -right-2 w-7 h-8 z-20 drop-shadow">${lockSvg}</div>`;
+        const passClaimGlow = (reached && state.passActivated && !passClaimed) ? " card-claimable" : "";
+        const passActionBadge = (!passClaimed && reached && state.passActivated)
+          ? `<span class="absolute top-1.5 left-1.5 z-20 px-1.5 py-0.5 rounded-md bg-[#22c55e] border border-[#11131e] font-ui font-extrabold text-[9px] text-white">Claim!</span>`
+          : "";
 
-        const passCardExtraClass = (!state.passActivated) ? " locked-padlock" : "";
+        html += `
+          <div class="tier-row grid grid-cols-[1fr_auto_1fr] items-center gap-2.5${isCurrent ? ' current' : ''}" id="tier-row-${t}" data-tier="${t}" data-reached="${reached}">
+            <div onclick="handleCardClick(${t}, 'free')" class="reward-card card-free h-32 sm:h-36 p-2 flex flex-col items-center justify-center relative" title="Tier ${t} Free: ${data.free.title}">
+              <div class="card-gleam"></div>
+              ${freeActionBadge}
+              ${getPassRewardSvg('free', data.free, t)}
+              <span class="font-display text-lg text-white text-outline-sm leading-none mt-0.5">+${freeAmt} ${freeUnit}</span>
+            </div>
 
-        html += '<div class="' + rowClass + '" id="tier-row-' + t + '" data-tier="' + t + '">' +
-          '<!-- Free Card (Left) -->' +
-          '<div class="pass-card card-free-tier" onclick="handleCardClick(' + t + ', \'free\')" title="Tier ' + t + ' Free Reward">' +
-            '<div style="font-size: 0.72rem; color: #7dd3fc; font-weight: 800;">Tier ' + t + '</div>' +
-            '<div style="font-size: 2.1rem; line-height: 1; margin: 4px 0; filter: drop-shadow(0 3px 6px rgba(0,0,0,0.5));">' + data.free.emoji + '</div>' +
-            '<div style="font-size: 0.75rem; font-weight: 700; color: #ffffff; line-height: 1.2;">' + data.free.title + '</div>' +
-            freePill +
-          '</div>' +
+            <div class="tier-badge relative z-20 w-11 h-10 ${badgeBg} border-[3px] border-[#11131e] rounded-xl flex items-center justify-center shadow-[0_3px_0_#11131e]" id="badge-${t}">
+              <span class="font-display text-lg text-white text-outline-sm">${t}</span>
+            </div>
 
-          '<!-- Tier Badge (Center) -->' +
-          '<div class="tier-badge" id="badge-' + t + '">' + t + '</div>' +
-
-          '<!-- Pass Card (Right) -->' +
-          '<div class="pass-card card-pass-tier' + passCardExtraClass + '" onclick="handleCardClick(' + t + ', \'pass\')" title="Tier ' + t + ' Pass Reward">' +
-            '<div style="font-size: 0.72rem; color: #fde047; font-weight: 800; display: flex; align-items: center; justify-content: center; gap: 4px;">' +
-              '<span>PASS</span>' +
-              ((!state.passActivated) ? '<span style="font-size: 0.65rem;">🔒</span>' : '') +
-            '</div>' +
-            '<div style="font-size: 2.1rem; line-height: 1; margin: 4px 0; filter: drop-shadow(0 3px 6px rgba(0,0,0,0.5));">' + data.pass.emoji + '</div>' +
-            '<div style="font-size: 0.75rem; font-weight: 700; color: #ffffff; line-height: 1.2;">' + data.pass.title + '</div>' +
-            passPill +
-          '</div>' +
-        '</div>';
+            <div id="pass-card-${t}" onclick="handleCardClick(${t}, 'pass')" class="reward-card card-pass${passClaimGlow} h-32 sm:h-36 p-2 flex flex-col items-center justify-center relative" title="Tier ${t} Pass: ${data.pass.title}">
+              <div class="card-gleam"></div>
+              ${passTopBadge}
+              ${passActionBadge}
+              ${getPassRewardSvg('pass', data.pass, t)}
+              <span class="font-display text-lg text-white text-outline-sm leading-none mt-0.5">+${passAmt} ${passUnit}</span>
+            </div>
+          </div>
+        `;
       }
 
       container.innerHTML = html;
       alignRail();
     }
 
-    // Align checkered progress rail
+    // Align checkered vertical rail and sticky columns header to reached tier & HUD height
     function alignRail() {
       try {
+        const hud = document.getElementById("arcadePassHud");
+        const stickyCols = document.getElementById("arcadePassStickyCols");
+        if (hud && stickyCols && hud.offsetHeight > 0) {
+          stickyCols.style.top = hud.offsetHeight + "px";
+        }
         const wrap = document.getElementById("passTrackWrap");
         const badgeCurrent = document.getElementById("badge-" + state.currentLevel);
         const fill = document.getElementById("progressFill");
-
-        if (wrap && badgeCurrent && fill) {
-          const wrapRect = wrap.getBoundingClientRect();
-          const badgeRect = badgeCurrent.getBoundingClientRect();
-          const centerY = (badgeRect.top + badgeRect.height / 2) - wrapRect.top;
-          fill.style.height = Math.max(0, Math.round(centerY)) + "px";
+        if (!wrap || !fill) return;
+        if (!state.currentLevel || state.currentLevel <= 0 || !badgeCurrent) {
+          fill.style.height = "0px";
+          return;
         }
+        const wrapRect = wrap.getBoundingClientRect();
+        const badgeRect = badgeCurrent.getBoundingClientRect();
+        const nextBadge = document.getElementById("badge-" + (state.currentLevel + 1));
+        const curCenter = (badgeRect.top + badgeRect.height / 2) - wrapRect.top;
+        let targetHeight = curCenter;
+        if (nextBadge) {
+          const nextRect = nextBadge.getBoundingClientRect();
+          const nextCenter = (nextRect.top + nextRect.height / 2) - wrapRect.top;
+          targetHeight = (curCenter + nextCenter) / 2;
+        }
+        fill.style.height = Math.max(0, Math.round(targetHeight)) + "px";
       } catch(e) {}
     }
+
+    window.openPreviewModal = openPreviewModal;
+    window.closePreviewModal = closePreviewModal;
+    window.activateFromModal = activateFromModal;
 
     // Direct Reward Claiming (Popup modal removed per user request)
     let activeModalReward = null;
@@ -1921,7 +2330,7 @@
 
       if (isPassClaimRunning) return;
 
-      const performRewardAward = () => {
+      const performRewardAward = async () => {
         if (state.claimed[key]) return;
         state.claimed[key] = true;
         localStorage.setItem("season_battle_pass_claimed", JSON.stringify(state.claimed));
@@ -1929,37 +2338,64 @@
         let c = parseInt(localStorage.getItem("task_game_coins") || localStorage.getItem("user_coins") || localStorage.getItem("task_game_coins_alt") || "0", 10) || 0;
         let s = parseInt(localStorage.getItem("task_game_stars") || localStorage.getItem("user_stars") || "0", 10) || 0;
         let tk = parseInt(localStorage.getItem("task_user_tickets") || localStorage.getItem("user_tickets") || localStorage.getItem("task_game_tickets") || "0", 10) || 0;
+        let dm = parseInt(localStorage.getItem("task_user_diamonds") || localStorage.getItem("user_diamonds") || "0", 10) || 0;
 
-        if (reward.coins) {
-          c += reward.coins;
-          localStorage.setItem("task_game_coins", c.toString());
-          localStorage.setItem("task_game_coins_alt", c.toString());
-          localStorage.setItem("user_coins", c.toString());
-          if (window.firebaseSync && typeof window.firebaseSync.setCoins === 'function') {
-            window.firebaseSync.setCoins(c);
+        if (window.Firebase && typeof window.Firebase.atomicBalanceMutation === 'function') {
+          const mut = await window.Firebase.atomicBalanceMutation({
+            deltaCoins: reward.coins || 0,
+            deltaStars: reward.stars || 0,
+            deltaTickets: reward.tickets || 0,
+            deltaDiamonds: reward.diamonds || 0,
+            reason: `Pass Tier ${tier} (${track})`,
+            txId: `pass_claim_${tier}_${track}`
+          });
+          if (mut && mut.ok) {
+            c = mut.coins;
+            s = mut.stars;
+            tk = mut.tickets;
+            dm = mut.diamonds !== undefined ? mut.diamonds : (parseInt(localStorage.getItem("task_user_diamonds") || "0", 10) || 0);
+          } else if (mut && mut.duplicate) {
+            // Already credited once; keep claimed UI synced
           }
-        }
-        if (reward.stars) {
-          s += reward.stars;
-          localStorage.setItem("task_game_stars", s.toString());
-          localStorage.setItem("user_stars", s.toString());
-          if (window.firebaseSync && typeof window.firebaseSync.setStars === 'function') {
-            window.firebaseSync.setStars(s);
+        } else {
+          if (reward.coins) {
+            c += reward.coins;
+            localStorage.setItem("task_game_coins", c.toString());
+            localStorage.setItem("task_game_coins_alt", c.toString());
+            localStorage.setItem("user_coins", c.toString());
+            if (window.firebaseSync && typeof window.firebaseSync.setCoins === 'function') window.firebaseSync.setCoins(c);
           }
-        }
-        if (reward.tickets) {
-          tk += reward.tickets;
-          localStorage.setItem("task_user_tickets", tk.toString());
-          localStorage.setItem("user_tickets", tk.toString());
-          localStorage.setItem("task_game_tickets", tk.toString());
-          if (window.firebaseSync && typeof window.firebaseSync.setTickets === 'function') {
-            window.firebaseSync.setTickets(tk);
+          if (reward.stars) {
+            s += reward.stars;
+            localStorage.setItem("task_game_stars", s.toString());
+            localStorage.setItem("user_stars", s.toString());
+            if (window.firebaseSync && typeof window.firebaseSync.setStars === 'function') window.firebaseSync.setStars(s);
+          }
+          if (reward.tickets) {
+            tk += reward.tickets;
+            localStorage.setItem("task_user_tickets", tk.toString());
+            localStorage.setItem("user_tickets", tk.toString());
+            localStorage.setItem("task_game_tickets", tk.toString());
+            if (window.firebaseSync && typeof window.firebaseSync.setTickets === 'function') window.firebaseSync.setTickets(tk);
+          }
+          if (reward.diamonds) {
+            dm += reward.diamonds;
+            localStorage.setItem("task_user_diamonds", dm.toString());
+            localStorage.setItem("user_diamonds", dm.toString());
+            if (window.firebaseSync && typeof window.firebaseSync.setDiamonds === 'function') window.firebaseSync.setDiamonds(dm);
           }
         }
 
         state.coins = c;
         state.stars = s;
         state.tickets = tk;
+        state.diamonds = dm;
+        if (typeof window.saveCurrentProfileToFirestore === 'function') {
+          try { window.saveCurrentProfileToFirestore(); } catch (e) {}
+        }
+        if (typeof window.updateAllDomBalances === 'function') {
+          window.updateAllDomBalances(c, s, tk, dm);
+        }
 
         updateHUD();
         renderTiers();
@@ -1977,13 +2413,13 @@
         try {
           const bc = new BroadcastChannel('nova_task_sync');
           bc.postMessage({ type: 'PASS_REWARD_CLAIMED', tier, track, timestamp: Date.now() });
-          bc.postMessage({ type: 'BALANCES_UPDATED', coins: c, stars: s, tickets: tk, timestamp: Date.now() });
+          bc.postMessage({ type: 'BALANCES_UPDATED', coins: c, stars: s, tickets: tk, diamonds: dm, timestamp: Date.now() });
           bc.close();
         } catch(e) {}
 
         try {
           const bSync = new BroadcastChannel('balance_sync_channel');
-          bSync.postMessage({ type: 'BALANCE_UPDATED', coins: c, stars: s, tickets: tk });
+          bSync.postMessage({ type: 'BALANCE_UPDATED', coins: c, stars: s, tickets: tk, diamonds: dm });
           bSync.close();
         } catch(e) {}
 
@@ -2051,6 +2487,10 @@
 
     function scrollToTier(tier) {
       tier = Math.max(1, Math.min(MAX_TIERS, tier));
+      if (tier > visibleMaxTier) {
+        visibleMaxTier = Math.min(MAX_TIERS, Math.ceil(tier / 50) * 50);
+        renderTiers();
+      }
       const el = document.getElementById("tier-row-" + tier);
       if (el) {
         el.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -2108,19 +2548,29 @@
       }, 400);
     });
 
+    function syncPassStateFromStorage() {
+      try {
+        const rawCfg = localStorage.getItem("task_pass_config");
+        if (rawCfg) passConfig = JSON.parse(rawCfg);
+        state.currentLevel = parseInt(localStorage.getItem("task_pass_level") || "0", 10);
+        state.completedTasks = parseInt(localStorage.getItem("task_pass_total_completed") || "0", 10);
+        state.passActivated = (localStorage.getItem("season_6_pass_activated") === "true");
+        const rawClaimed = localStorage.getItem("season_battle_pass_claimed");
+        if (rawClaimed) state.claimed = JSON.parse(rawClaimed) || {};
+      } catch(e) {}
+      updateHUD();
+      if (typeof updateTaskPassUI === "function") updateTaskPassUI();
+      updateTaskPassWidget();
+      renderTiers();
+    }
+
+    window.addEventListener("balance:synced", syncPassStateFromStorage);
+    window.addEventListener("profile:cloudSynced", syncPassStateFromStorage);
+
     // Real-Time Cross-Window Synchronization (Admin Pass Edits)
     window.addEventListener("storage", (e) => {
-      if (e.key === "task_pass_config" || e.key === "season_6_pass_activated" || e.key === "task_pass_level" || e.key === "task_pass_total_completed") {
-        try {
-          const rawCfg = localStorage.getItem("task_pass_config");
-          if (rawCfg) passConfig = JSON.parse(rawCfg);
-          state.currentLevel = parseInt(localStorage.getItem("task_pass_level") || "0", 10);
-          state.completedTasks = parseInt(localStorage.getItem("task_pass_total_completed") || "0", 10);
-          state.passActivated = (localStorage.getItem("season_6_pass_activated") === "true");
-        } catch(e) {}
-        updateHUD();
-        updateTaskPassWidget();
-        renderTiers();
+      if (e.key === "task_pass_config" || e.key === "season_6_pass_activated" || e.key === "season_battle_pass_claimed" || e.key === "task_pass_level" || e.key === "task_pass_total_completed") {
+        syncPassStateFromStorage();
       }
     });
 
@@ -2128,7 +2578,16 @@
       const bc = new BroadcastChannel("nova_task_sync");
       bc.onmessage = (msg) => {
         updateHUD();
-        if (msg && msg.data && (msg.data.type === "PASS_ACTIVATED" || msg.data.type === "PASS_CONFIG_UPDATED" || msg.data.type === "TASKS_RESTORED" || msg.data.type === "TASKS_UPDATED" || msg.data.type === "TASK_COMPLETED" || msg.data.type === "BALANCES_UPDATED")) {
+        if (msg && msg.data && msg.data.type === "SEASON_TIMER_UPDATED") {
+          if (typeof msg.data.startTime === 'number') {
+            localStorage.setItem('season_pass_start_timestamp', String(msg.data.startTime));
+          }
+          if (typeof msg.data.endTime === 'number' && msg.data.endTime > 0) {
+            localStorage.setItem('season_pass_end_timestamp', String(msg.data.endTime));
+          }
+          updatePassHeroSeasonTimer();
+        }
+        if (msg && msg.data && (msg.data.type === "SETTINGS_UPDATED" || msg.data.type === "PASS_ACTIVATED" || msg.data.type === "PASS_CONFIG_UPDATED" || msg.data.type === "TASKS_RESTORED" || msg.data.type === "TASKS_UPDATED" || msg.data.type === "TASK_COMPLETED" || msg.data.type === "BALANCES_UPDATED")) {
           try {
             if (typeof syncTaskPassFromCompletedTasks === 'function') syncTaskPassFromCompletedTasks();
             const rawCfg = localStorage.getItem("task_pass_config");
@@ -2140,33 +2599,60 @@
           updateHUD();
           updateTaskPassWidget();
           renderTiers();
+          updatePassHeroSeasonTimer();
         }
       };
     } catch(e) {}
 
-    function updatePassHeroSeasonTimer() {
-      const el = document.getElementById("passHeroSeasonCountdown");
-      if (!el) return;
-      let endTime = parseInt(localStorage.getItem('season_pass_end_timestamp') || '0', 10);
-      if (!endTime || isNaN(endTime) || endTime <= Date.now()) {
-        endTime = Date.now() + 21 * 86400000;
-        localStorage.setItem('season_pass_end_timestamp', endTime.toString());
-      }
-      const diff = endTime - Date.now();
-      if (diff <= 0) {
-        el.textContent = "⏱️ Season Ended";
-        return;
-      }
-      const totalSec = Math.floor(diff / 1000);
+    function formatSeasonDuration(ms) {
+      const totalSec = Math.max(0, Math.floor(ms / 1000));
       const d = Math.floor(totalSec / 86400);
       const h = Math.floor((totalSec % 86400) / 3600);
       const m = Math.floor((totalSec % 3600) / 60);
       const s = totalSec % 60;
-      el.textContent = `⏱️ Season Ends: ${d}d ${h.toString().padStart(2, '0')}h ${m.toString().padStart(2, '0')}m ${s.toString().padStart(2, '0')}s`;
+      return `${d}d ${h.toString().padStart(2, '0')}h ${m.toString().padStart(2, '0')}m ${s.toString().padStart(2, '0')}s`;
     }
+
+    function updatePassHeroSeasonTimer() {
+      const el = document.getElementById("passHeroSeasonCountdown");
+      if (!el) return;
+      const appCfg = (window.TapEmpireUtils && typeof window.TapEmpireUtils.getAppSettings === 'function')
+        ? window.TapEmpireUtils.getAppSettings()
+        : null;
+      let startTime = parseInt(localStorage.getItem('season_pass_start_timestamp') || '0', 10) || 0;
+      if (!startTime && appCfg && appCfg.seasonPass && appCfg.seasonPass.startTime > 0) {
+        startTime = Number(appCfg.seasonPass.startTime) || 0;
+      }
+      let endTime = parseInt(localStorage.getItem('season_pass_end_timestamp') || '0', 10) || 0;
+      if ((!endTime || endTime <= 0) && appCfg && appCfg.seasonPass && appCfg.seasonPass.endTime > 0) {
+        endTime = Number(appCfg.seasonPass.endTime) || 0;
+      }
+      if (!endTime || isNaN(endTime) || endTime <= Date.now()) {
+        if (!endTime || isNaN(endTime)) {
+          endTime = Date.now() + 21 * 86400000;
+          localStorage.setItem('season_pass_end_timestamp', endTime.toString());
+        }
+      }
+      const now = Date.now();
+      if (startTime > now) {
+        el.style.color = "#fde047";
+        el.textContent = `🚀 Coming Soon: ${formatSeasonDuration(startTime - now)}`;
+        return;
+      }
+      const diff = endTime - now;
+      if (diff <= 0) {
+        el.style.color = "#f87171";
+        el.textContent = "⏱️ Season Ended";
+        return;
+      }
+      el.style.color = "#38bdf8";
+      el.textContent = `⏱️ Season Ends: ${formatSeasonDuration(diff)}`;
+    }
+    window.addEventListener("settings:changed", updatePassHeroSeasonTimer);
     setInterval(updatePassHeroSeasonTimer, 1000);
     setTimeout(updatePassHeroSeasonTimer, 50);
 
+    window.addEventListener("load", alignRail);
     window.addEventListener("resize", alignRail);
     window.handleCardClick = handleCardClick;
     window.claimCurrentModalReward = claimCurrentModalReward;

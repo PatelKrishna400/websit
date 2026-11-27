@@ -289,99 +289,162 @@
       box-shadow: 0 3px 10px rgba(192, 38, 211, 0.45);
     }
 
-    /* Switcher tabs removed per user request: dedicated category pages show their respective tasks directly */
+    /* Category Banner & Action Helpers */
     .tg-switcher-tabs {
       display: none !important;
     }
 
-    /* Duplicate category tab strip hidden per user request — dedicated pages open via Home navigation cards */
-    .tg-tab-bar, #categoryTabs {
-      display: none !important;
+    /* Page-Level Tab-Wise Accent Styling */
+    .mobile-container.theme-common {
+      background-color: #05132b;
+      background-image:
+        radial-gradient(circle at 82% 8%, rgba(186, 230, 253, 0.24) 0%, transparent 45%),
+        radial-gradient(circle at 18% 22%, rgba(56, 189, 248, 0.16) 0%, transparent 55%),
+        linear-gradient(180deg, #071b3d 0%, #051128 55%, #040b1c 100%);
+      border-left-color: rgba(125, 211, 252, 0.35);
+      border-right-color: rgba(125, 211, 252, 0.35);
     }
-
-    .tg-tab-btn {
-      flex: 0 0 auto;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 0.35rem;
-      padding: 0.5rem 0.72rem;
-      border-radius: 12px;
-      font-size: 0.76rem;
-      font-weight: 800;
-      color: #cbd5e1;
-      background: rgba(15, 23, 42, 0.85);
-      border: 1.5px solid rgba(148, 163, 184, 0.22);
-      text-decoration: none;
-      transition: all 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
-      cursor: pointer;
-      white-space: nowrap;
+    .mobile-container.theme-common .home-header {
+      background: linear-gradient(180deg, rgba(8, 34, 72, 0.94) 0%, rgba(5, 19, 44, 0.92) 100%);
+      border-bottom: 1.5px solid rgba(125, 211, 252, 0.55);
+      box-shadow: 0 4px 18px rgba(56, 189, 248, 0.16);
     }
-    .tg-tab-btn:hover { color: #ffffff; transform: translateY(-1px); }
-
-    /* Tab-Wise Image 8 Colors */
-    .tg-tab-btn[data-cat="common"] { border-color: rgba(56, 189, 248, 0.35); color: #7dd3fc; }
-    .tg-tab-btn[data-cat="simple"] { border-color: rgba(37, 99, 235, 0.45); color: #93c5fd; }
-    .tg-tab-btn[data-cat="star"] { border-color: rgba(168, 85, 247, 0.45); color: #d8b4fe; }
-    .tg-tab-btn[data-cat="pro"] { border-color: rgba(203, 213, 225, 0.4); color: #e2e8f0; }
-    .tg-tab-btn[data-cat="ultra"] { border-color: rgba(250, 204, 21, 0.45); color: #fde047; }
-    .tg-tab-btn[data-cat="quiz"] { border-color: rgba(16, 185, 129, 0.45); color: #6ee7b7; }
-
-    .tg-tab-btn.active-common {
-      background: linear-gradient(135deg, rgba(8, 47, 73, 0.96) 0%, #0284c7 100%);
-      color: #ffffff;
-      border-color: #38bdf8;
-      box-shadow: 0 4px 14px rgba(56, 189, 248, 0.45);
-    }
-    .tg-tab-btn.active-simple, .tg-tab-btn.active-coin {
-      background: linear-gradient(135deg, rgba(17, 24, 80, 0.98) 0%, #2563eb 100%);
-      color: #ffffff;
-      border-color: #60a5fa;
-      box-shadow: 0 4px 14px rgba(37, 99, 235, 0.5);
-    }
-    .tg-tab-btn.active-star {
-      background: linear-gradient(135deg, rgba(49, 16, 86, 0.98) 0%, #9333ea 100%);
-      color: #fef08a;
-      border-color: #c084fc;
-      box-shadow: 0 4px 14px rgba(168, 85, 247, 0.5);
-    }
-    .tg-tab-btn.active-pro {
-      background: linear-gradient(135deg, rgba(30, 41, 59, 0.98) 0%, #059669 100%);
-      color: #ffffff;
-      border-color: #cbd5e1;
-      box-shadow: 0 4px 14px rgba(203, 213, 225, 0.4);
-    }
-    .tg-tab-btn.active-ultra {
-      background: linear-gradient(135deg, rgba(66, 32, 6, 0.98) 0%, #d97706 100%);
-      color: #fef08a;
-      border-color: #facc15;
-      box-shadow: 0 4px 14px rgba(250, 204, 21, 0.45);
-    }
-    .tg-tab-btn.active-quiz {
-      background: linear-gradient(135deg, rgba(6, 60, 46, 0.98) 0%, #10b981 100%);
-      color: #ffffff;
-      border-color: #34d399;
-      box-shadow: 0 4px 14px rgba(16, 185, 129, 0.45);
-    }
-
-    /* Page-Level Image 8 Tab-Wise Accent Styling */
-    .mobile-container.theme-common .home-header { border-bottom-color: rgba(56, 189, 248, 0.45); }
     .mobile-container.theme-simple .home-header { border-bottom-color: rgba(37, 99, 235, 0.55); }
-    .mobile-container.theme-star .home-header { border-bottom-color: rgba(168, 85, 247, 0.55); }
+    .mobile-container.theme-star {
+      background-color: #100826;
+      background-image:
+        radial-gradient(circle at 82% 8%, rgba(192, 132, 252, 0.22) 0%, transparent 48%),
+        linear-gradient(180deg, #160a33 0%, #09061a 60%, #050512 100%);
+    }
+    .mobile-container.theme-star .home-header { border-bottom-color: rgba(192, 132, 252, 0.55); }
     .mobile-container.theme-pro .home-header { border-bottom-color: rgba(203, 213, 225, 0.45); }
     .mobile-container.theme-ultra .home-header { border-bottom-color: rgba(250, 204, 21, 0.55); }
     .mobile-container.theme-quiz .home-header { border-bottom-color: rgba(16, 185, 129, 0.55); }
+    .mobile-container.theme-diamond .home-header { border-bottom-color: rgba(34, 211, 238, 0.55); }
+    .mobile-container.theme-google .home-header { border-bottom-color: rgba(129, 140, 248, 0.58); }
 
-    .tg-tab-badge {
-      font-size: 0.58rem;
-      font-weight: 900;
-      padding: 0.12rem 0.4rem;
+    /* ======================================================================
+       CATEGORY VISUAL HERO BANNERS (MATCHING HOME HUB ARTWORK)
+       ====================================================================== */
+    .cat-visual-banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      min-height: 78px;
+      padding: 0.85rem 1rem;
+      border-radius: 18px;
+      background-size: cover;
+      background-position: center right;
+      background-repeat: no-repeat;
+      box-shadow: 0 10px 26px rgba(0, 0, 0, 0.52);
+      position: relative;
+      overflow: hidden;
+      margin-bottom: 0.15rem;
+    }
+    .cat-visual-banner.banner-common {
+      background-image: linear-gradient(95deg, rgba(6, 22, 52, 0.92) 0%, rgba(8, 38, 82, 0.72) 52%, rgba(14, 116, 144, 0.22) 100%), url('../../assets/hub/bg-common.png');
+      border: 1.8px solid rgba(125, 211, 252, 0.72);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 22px rgba(56, 189, 248, 0.28);
+    }
+    .cat-visual-banner.banner-coin {
+      background-image: linear-gradient(95deg, rgba(8, 16, 48, 0.92) 0%, rgba(15, 28, 80, 0.72) 52%, rgba(29, 78, 216, 0.22) 100%), url('../../assets/hub/bg-coin.png');
+      border: 1.8px solid rgba(96, 165, 250, 0.65);
+    }
+    .cat-visual-banner.banner-star {
+      background-image: linear-gradient(95deg, rgba(20, 10, 44, 0.92) 0%, rgba(44, 18, 82, 0.72) 52%, rgba(126, 34, 206, 0.22) 100%), url('../../assets/hub/bg-star.png');
+      border: 1.8px solid rgba(192, 132, 252, 0.7);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 22px rgba(168, 85, 247, 0.28);
+    }
+    .cat-visual-banner.banner-pro {
+      background-image: linear-gradient(95deg, rgba(15, 23, 42, 0.92) 0%, rgba(30, 41, 59, 0.74) 52%, rgba(100, 116, 139, 0.24) 100%), url('../../assets/hub/bg-pro.png');
+      border: 1.8px solid rgba(226, 232, 240, 0.65);
+    }
+    .cat-visual-banner.banner-ultra {
+      background-image: linear-gradient(95deg, rgba(41, 18, 4, 0.92) 0%, rgba(66, 32, 6, 0.72) 52%, rgba(202, 138, 4, 0.24) 100%), url('../../assets/hub/bg-ultra.png');
+      border: 1.8px solid rgba(250, 204, 21, 0.72);
+    }
+    .cat-visual-banner.banner-quiz {
+      background-image: linear-gradient(95deg, rgba(4, 34, 28, 0.92) 0%, rgba(6, 78, 59, 0.72) 52%, rgba(16, 185, 129, 0.22) 100%), url('../../assets/hub/bg-quiz.png');
+      border: 1.8px solid rgba(52, 211, 153, 0.68);
+    }
+    .cat-visual-banner.banner-diamond {
+      background-image: linear-gradient(95deg, rgba(6, 24, 48, 0.92) 0%, rgba(8, 51, 68, 0.72) 52%, rgba(34, 211, 238, 0.22) 100%), url('../../assets/hub/bg-diamond.png');
+      border: 1.8px solid rgba(103, 232, 249, 0.72);
+    }
+    .cat-visual-banner.banner-google {
+      background-image: linear-gradient(95deg, rgba(24, 16, 56, 0.92) 0%, rgba(49, 46, 129, 0.72) 52%, rgba(236, 72, 153, 0.24) 100%), url('../../assets/hub/bg-google.png');
+      border: 1.8px solid rgba(244, 114, 182, 0.68);
+    }
+    .cat-banner-left {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      min-width: 0;
+    }
+    .cat-banner-icon {
+      width: 42px;
+      height: 42px;
+      border-radius: 13px;
+      background: rgba(6, 14, 36, 0.68);
+      border: 1.5px solid rgba(255, 255, 255, 0.35);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.35rem;
+      flex-shrink: 0;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+    }
+    .cat-banner-title {
+      font-size: 1.05rem;
+      font-weight: 800;
+      color: #ffffff;
+      -webkit-text-stroke: 2px #051126;
+      paint-order: stroke fill;
+      text-shadow: 0 2px 6px rgba(0, 0, 0, 0.9);
+      line-height: 1.1;
+    }
+    .cat-banner-right {
+      flex-shrink: 0;
+    }
+    .cat-banner-stat-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 0.36rem 0.72rem;
       border-radius: 999px;
-      line-height: 1;
+      background: rgba(6, 14, 36, 0.78);
+      border: 1.5px solid rgba(255, 255, 255, 0.32);
+      color: #ffffff;
+      font-size: 0.74rem;
+      font-weight: 800;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+      backdrop-filter: blur(6px);
+      white-space: nowrap;
+    }
+
+    /* Enhanced Common Task Page Design (Sky Blue + White Smoke + Flying Tickets) */
+    .mobile-container.theme-common .tap-progress-card {
+      background: linear-gradient(145deg, rgba(12, 42, 84, 0.92) 0%, rgba(6, 21, 48, 0.96) 100%) !important;
+      border: 1.5px solid rgba(125, 211, 252, 0.58) !important;
+      box-shadow: 0 8px 22px rgba(0, 0, 0, 0.48), 0 0 18px rgba(56, 189, 248, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.16) !important;
+    }
+    .mobile-container.theme-common .tap-task-card.tap-common-task-card {
+      background:
+        radial-gradient(circle at 92% 18%, rgba(224, 242, 254, 0.16) 0%, transparent 45%),
+        linear-gradient(145deg, rgba(10, 34, 70, 0.94) 0%, rgba(6, 18, 42, 0.97) 100%) !important;
+      border: 1.5px solid rgba(125, 211, 252, 0.48) !important;
+      border-left: 4px solid #38bdf8 !important;
+      box-shadow: 0 7px 18px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(224, 242, 254, 0.14) !important;
+    }
+    .mobile-container.theme-common .btn-tg-open {
+      background: linear-gradient(180deg, #38bdf8 0%, #0284c7 100%) !important;
+      border: 1.5px solid #bae6fd !important;
+      box-shadow: 0 3px 0 #0369a1, 0 5px 12px rgba(14, 165, 233, 0.42) !important;
     }
 
     /* ======================================================================
-       CATEGORY BANNER & VIP / EVENT PROMOS
+       CATEGORY BANNER & EVENT PROMOS
        ====================================================================== */
     .cat-status-banner {
       background: linear-gradient(155deg, rgba(14, 27, 60, 0.85) 0%, rgba(6, 14, 36, 0.95) 100%);
@@ -588,8 +651,8 @@
       box-shadow: 0 3px 10px rgba(14, 165, 233, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.35);
       transition: all 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
     }
-    .btn-tg-open:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(14, 165, 233, 0.6); }
-    .btn-tg-open:active { transform: scale(0.95); }
+    .btn-tg-open:hover { box-shadow: 0 4px 14px rgba(14, 165, 233, 0.6); }
+    .btn-tg-open:active { opacity: 0.92; }
 
     .btn-tg-verify {
       padding: 0.48rem 0.85rem;
@@ -601,10 +664,10 @@
       border-radius: 10px;
       cursor: pointer;
       box-shadow: 0 3px 10px rgba(16, 185, 129, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.4);
-      transition: all 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+      transition: box-shadow 0.18s ease, opacity 0.18s ease;
     }
-    .btn-tg-verify:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(16, 185, 129, 0.6); }
-    .btn-tg-verify:active { transform: scale(0.95); }
+    .btn-tg-verify:hover { box-shadow: 0 4px 14px rgba(16, 185, 129, 0.6); }
+    .btn-tg-verify:active { opacity: 0.92; }
 
     .tg-task-completed-pill {
       font-size: 0.74rem;
@@ -967,7 +1030,7 @@
          ====================================================================== -->
     <header class="home-header">
       <div class="header-user">
-        <button onclick="navigateBack()" aria-label="Return to previous page" class="user-avatar" style="cursor: pointer; border-color: rgba(56, 189, 248, 0.4); background: linear-gradient(135deg, #0e1e47 0%, #0b1530 100%); color: #38bdf8; transition: all 0.2s ease;" title="Back">
+        <button onclick="navigateBack()" aria-label="Return to previous page" class="user-avatar" style="cursor: pointer; border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 10px; background: linear-gradient(135deg, #0e1e47 0%, #0b1530 100%); color: #38bdf8; transition: all 0.2s ease;" title="Back">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
             <path d="M19 12H5M12 19l-7-7 7-7"/>
           </svg>
@@ -1028,16 +1091,6 @@
         </div>
       </section>
 
-      <!-- Image 8 Tab-Wise Navigation Strip -->
-      <div class="tg-tab-bar" id="categoryTabs">
-        <button type="button" class="tg-tab-btn" id="tabCommon" data-cat="common" onclick="switchCategory('common')">📋 Common <span class="tg-tab-badge" id="tabCountCommon">0</span></button>
-        <button type="button" class="tg-tab-btn" id="tabCoin" data-cat="simple" onclick="switchCategory('simple')">🪙 Coin <span class="tg-tab-badge" id="tabCountSimple">0</span></button>
-        <button type="button" class="tg-tab-btn" id="tabStar" data-cat="star" onclick="switchCategory('star')">⭐ Star <span class="tg-tab-badge" id="tabCountStar">0</span></button>
-        <button type="button" class="tg-tab-btn" id="tabPro" data-cat="pro" onclick="switchCategory('pro')">💎 Pro <span class="tg-tab-badge" id="tabCountPro">0</span></button>
-        <button type="button" class="tg-tab-btn" id="tabUltra" data-cat="ultra" onclick="switchCategory('ultra')">⚡ Ultra <span class="tg-tab-badge" id="tabCountUltra">0</span></button>
-        <button type="button" class="tg-tab-btn" id="tabQuiz" data-cat="quiz" onclick="switchCategory('quiz')">🧠 Quiz <span class="tg-tab-badge" id="tabCountQuiz">0</span></button>
-      </div>
-
       <!-- Category Banner (VIP Pass Status, Pro Pack Event Timer, etc.) -->
       <div id="catBannerContainer"></div>
 
@@ -1054,56 +1107,35 @@
     <nav class="below-menu-bar" id="belowMenuBar" aria-label="Bottom Navigation">
       <a href="../shop/index.html" class="below-menu-item" id="menuShop" title="Shop">
         <div class="menu-icon-wrap">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path>
-            <line x1="3" y1="6" x2="21" y2="6"></line>
-            <path d="M16 10a4 4 0 0 1-8 0"></path>
-          </svg>
+          <img src="../../assets/menu/nav-shop.png" alt="Shop" class="menu-3d-sticker" style="width: 32px; height: 32px; object-fit: contain; display: block; pointer-events: none;" />
         </div>
         <span class="menu-label">Shop</span>
       </a>
 
       <a href="../leaderboard/index.html" class="below-menu-item" id="menuLeaderboard" title="500 Levels Battle Pass">
         <div class="menu-icon-wrap">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path>
-            <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path>
-            <path d="M4 22h16"></path>
-            <path d="M10 14.66V17c0 .55-.45 1-1 1H7c-.55 0-1-.45-1-1v-2.34"></path>
-            <path d="M18 14.66V17c0 .55-.45 1-1 1h-2c-.55 0-1-.45-1-1v-2.34"></path>
-            <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"></path>
-          </svg>
+          <img src="../../assets/menu/nav-pass.png" alt="Pass" class="menu-3d-sticker" style="width: 32px; height: 32px; object-fit: contain; display: block; pointer-events: none;" />
         </div>
         <span class="menu-label">Pass</span>
       </a>
 
       <a href="../home/index.html" class="below-menu-item center-home-btn" id="menuHome" title="Home">
         <div class="center-home-icon-wrap">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-            <polyline points="9 22 9 12 15 12 15 22"></polyline>
-          </svg>
+          <img src="../../assets/menu/nav-home.png" alt="Home" class="menu-3d-sticker center-home-3d-sticker" style="width: 42px; height: 42px; object-fit: contain; display: block; pointer-events: none;" />
         </div>
         <span class="menu-label">Home</span>
       </a>
 
       <a href="../wallet/index.html" class="below-menu-item" id="menuWallet" title="Wallet">
         <div class="menu-icon-wrap">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"></path>
-            <path d="M3 5v14a2 2 0 0 0 2 2h16v-5"></path>
-            <path d="M18 12a2 2 0 0 0 0 4h4v-4Z"></path>
-          </svg>
+          <img src="../../assets/menu/nav-wallet.png" alt="Wallet" class="menu-3d-sticker" style="width: 32px; height: 32px; object-fit: contain; display: block; pointer-events: none;" />
         </div>
         <span class="menu-label">Wallet</span>
       </a>
 
       <a href="../profile/index.html" class="below-menu-item" id="menuProfile" title="Profile">
         <div class="menu-icon-wrap">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path>
-            <circle cx="12" cy="7" r="4"></circle>
-          </svg>
+          <img src="../../assets/menu/nav-profile.png" alt="Profile" class="menu-3d-sticker" style="width: 32px; height: 32px; object-fit: contain; display: block; pointer-events: none;" />
         </div>
         <span class="menu-label">Profile</span>
       </a>
@@ -1113,50 +1145,22 @@
          4. TASK VERIFICATION MODAL (6-DIGIT ADMIN CODE VERIFICATION)
          ====================================================================== -->
     <div id="taskVerifyModalOverlay" class="modal-backdrop" style="display: none;" onclick="if(event.target===this) closeVerifyModal()">
-      <div class="reward-modal-card" onclick="event.stopPropagation()">
+      <form class="reward-modal-card" onsubmit="submitTaskVerification(event)" onclick="event.stopPropagation()">
         <div id="modalTaskEmoji" style="font-size: 2.8rem; margin-bottom: 0.35rem;">🔐</div>
         <h3 id="verifyModalTitle" class="game-outline modal-reward-title">Verify Mission</h3>
         <div id="verifyModalBountyPill" class="modal-track-badge" style="background: rgba(14, 165, 233, 0.2); border: 1px solid #38bdf8; color: #38bdf8;">+0 REWARD</div>
-        <p id="verifyModalDesc" class="modal-reward-desc">Enter the 6-digit verification code configured by Admin to claim your reward.</p>
-        <input type="text" id="verifyCodeInput" maxlength="6" inputmode="numeric" placeholder="Enter 6-digit code" style="width:100%;box-sizing:border-box;padding:0.65rem;border-radius:10px;border:1.5px solid rgba(56,189,248,0.45);background:#020617;color:#facc15;font-family:monospace;font-size:1.15rem;font-weight:900;letter-spacing:4px;text-align:center;margin-bottom:0.5rem;" />
+        <p id="verifyModalDesc" class="modal-reward-desc">Enter the verification code configured by Admin to claim your reward.</p>
+        <input type="text" id="verifyCodeInput" maxlength="6" inputmode="numeric" placeholder="Enter 4-6 digit code" style="width:100%;box-sizing:border-box;padding:0.65rem;border-radius:10px;border:1.5px solid rgba(56,189,248,0.45);background:#020617;color:#facc15;font-family:monospace;font-size:1.15rem;font-weight:900;letter-spacing:4px;text-align:center;margin-bottom:0.5rem;" />
         <div id="verifyErrorMsg" style="display:none;color:#f87171;font-size:0.75rem;font-weight:800;margin-bottom:0.5rem;"></div>
 
         <div style="display: flex; gap: 8px; margin-top: 0.35rem;">
           <button type="button" onclick="closeVerifyModal()" class="modal-btn-close">Cancel</button>
-          <button type="button" id="btnVerifyConfirm" onclick="submitTaskVerification()" class="modal-btn-claim">Verify &amp; Claim ✓</button>
+          <button type="submit" id="btnVerifyConfirm" class="modal-btn-claim">Verify &amp; Claim ✓</button>
         </div>
-      </div>
+      </form>
     </div>
 
   </div> <!-- End .mobile-container -->
-
-  <!-- ======================================================================
-       4C. VIP STAR PLAN MODAL (CONFIGURABLE VIA ADMIN PANEL)
-       ====================================================================== -->
-  <div class="modal-backdrop vip-modal-overlay" id="vipSubscriptionModal" style="display: none;" onclick="if(event.target===this) closeSubscriptionModal()">
-    <div class="vip-modal-box" onclick="event.stopPropagation()">
-      <button type="button" class="vip-modal-close-btn" onclick="closeSubscriptionModal()" aria-label="Close modal">✕</button>
-
-      <div class="vip-modal-header">
-        <div class="vip-crown-badge">👑</div>
-        <h2 class="vip-modal-title">VIP Star Plan</h2>
-        <p class="vip-modal-subtitle">Unlock exclusive VIP Star Tasks &amp; earn daily Star rewards!</p>
-
-        <div class="vip-balance-strip">
-          <span>Your Balance:</span>
-          <span class="vip-balance-pill">⭐ <b id="vipModalUserStars">0</b> Stars</span>
-        </div>
-      </div>
-
-      <div class="vip-plans-grid" id="vipDynamicPlanContainer" style="display:flex;flex-direction:column;gap:0.65rem;max-height:56vh;overflow-y:auto;padding-right:2px;">
-        <!-- Populated dynamically with 500, 1,000, and 5,000 Star VIP Plans -->
-      </div>
-
-      <div class="vip-modal-footer-note">
-        <span>Common Tasks remain 100% free with no VIP subscription required.</span>
-      </div>
-    </div>
-  </div>
 
   <!-- Toast Notification -->
   <div id="arcadeToast" class="arcade-toast-pill">

@@ -45,6 +45,27 @@ function openSponsorAdLink(seed) {
   return link;
 }
 
+function openTenSponsorAdLinks(seed) {
+  const list = PASS_SPONSOR_LINKS_20;
+  const total = Math.min(10, list.length);
+  const start = Math.abs(parseInt(seed || Date.now(), 10)) % list.length;
+  const openedUrls = [];
+  for (let offset = 0; offset < total; offset++) {
+    const link = list[(start + offset) % list.length];
+    openedUrls.push(link);
+    try {
+      const adTab = window.open(link, '_blank');
+      if (adTab) {
+        try { adTab.blur(); } catch (e) {}
+      }
+    } catch (err) {
+      console.warn('[AdService] 10-link ad open note:', err);
+    }
+  }
+  try { window.focus(); } catch (e) {}
+  return openedUrls;
+}
+
 // Backward-compat fallback if old zone function is called
 if (typeof window.show_10691428 !== 'function' && typeof window.show_11677609 === 'function') {
   window.show_10691428 = window.show_11677609;
@@ -85,10 +106,12 @@ function runRewardedAd() {
 
 window.PASS_SPONSOR_LINKS_20 = PASS_SPONSOR_LINKS_20;
 window.openSponsorAdLink = openSponsorAdLink;
+window.openTenSponsorAdLinks = openTenSponsorAdLinks;
 window.runRewardedAd = runRewardedAd;
 window.AdService = {
     sponsorLinks: PASS_SPONSOR_LINKS_20,
     openSponsorAdLink: openSponsorAdLink,
+    openTenSponsorAdLinks: openTenSponsorAdLinks,
     showWatchAd: runRewardedAd,
     runRewardedAd: runRewardedAd
   };

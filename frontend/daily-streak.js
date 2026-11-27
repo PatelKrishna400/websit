@@ -12,6 +12,20 @@
  */
 
 (function() {
+  const STREAK_BASE_URL = (() => {
+    try {
+      const cs = document.currentScript && document.currentScript.src;
+      if (cs) return new URL('.', cs).href;
+    } catch (e) {}
+    return '../../';
+  })();
+  function streakAssetUrl(relPath) {
+    return `${STREAK_BASE_URL}${relPath}`;
+  }
+  function streakSticker(file, cls = 'streak-3d-ico-sm', alt = '') {
+    return `<img src="${streakAssetUrl('assets/stickers/' + file)}" alt="${alt}" class="${cls}" />`;
+  }
+
   const STREAK_COUNT_KEY = 'task_daily_streak_count';
   const STREAK_LAST_DATE_KEY = 'task_daily_streak_last_date';
   const USER_TICKETS_KEY = 'task_user_tickets';
@@ -164,13 +178,19 @@
         opacity: 1;
       }
       .streak-modal-card {
-        background: linear-gradient(145deg, #0a1738 0%, #060e24 100%);
-        border: 1.5px solid rgba(249, 115, 22, 0.4);
-        border-radius: 20px;
+        background-color: #060e24;
+        background-image:
+          linear-gradient(180deg, rgba(6, 14, 36, 0.14) 0%, rgba(6, 14, 36, 0.78) 38%, rgba(6, 14, 36, 0.97) 72%),
+          url('${streakAssetUrl('assets/streak/streak-popup-bg.png')}');
+        background-size: cover;
+        background-position: center top;
+        background-repeat: no-repeat;
+        border: 1.5px solid rgba(249, 115, 22, 0.55);
+        border-radius: 22px;
         padding: 1.25rem;
         width: 100%;
-        max-width: 380px;
-        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.8), 0 0 24px rgba(249, 115, 22, 0.15);
+        max-width: 390px;
+        box-shadow: 0 18px 50px rgba(0, 0, 0, 0.85), 0 0 28px rgba(249, 115, 22, 0.22);
         animation: streakSlideUpAnim 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         max-height: 90vh;
         overflow-y: auto;
@@ -180,6 +200,51 @@
         from { transform: translateY(30px) scale(0.95); opacity: 0; }
         to { transform: translateY(0) scale(1); opacity: 1; }
       }
+      .streak-3d-ico-xs {
+        width: 14px;
+        height: 14px;
+        object-fit: contain;
+        display: inline-block;
+        vertical-align: middle;
+        flex-shrink: 0;
+        pointer-events: none;
+      }
+      .streak-3d-ico-sm {
+        width: 18px;
+        height: 18px;
+        object-fit: contain;
+        display: inline-block;
+        vertical-align: middle;
+        flex-shrink: 0;
+        pointer-events: none;
+        filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.45));
+      }
+      .streak-3d-ico-md {
+        width: 30px;
+        height: 30px;
+        object-fit: contain;
+        display: block;
+        margin: 0 auto;
+        pointer-events: none;
+        filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.55));
+      }
+      .streak-3d-ico-lg {
+        width: 36px;
+        height: 36px;
+        object-fit: contain;
+        display: block;
+        flex-shrink: 0;
+        pointer-events: none;
+        filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.6));
+      }
+      .streak-3d-hero {
+        width: 44px;
+        height: 44px;
+        object-fit: contain;
+        display: block;
+        pointer-events: none;
+        filter: drop-shadow(0 0 12px rgba(249, 115, 22, 0.72));
+      }
       .streak-modal-header {
         display: flex;
         justify-content: space-between;
@@ -187,9 +252,16 @@
         margin-bottom: 0.85rem;
       }
       .streak-fire-icon {
-        font-size: 2rem;
-        line-height: 1;
-        filter: drop-shadow(0 0 8px rgba(249, 115, 22, 0.6));
+        width: 50px;
+        height: 50px;
+        border-radius: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: radial-gradient(circle, rgba(249, 115, 22, 0.35) 0%, rgba(15, 23, 42, 0.75) 100%);
+        border: 1.5px solid rgba(251, 146, 60, 0.55);
+        box-shadow: 0 4px 16px rgba(249, 115, 22, 0.3);
+        flex-shrink: 0;
       }
       .streak-modal-title {
         font-size: 1.15rem;
@@ -197,16 +269,17 @@
         color: #ffffff;
         margin: 0;
         line-height: 1.2;
+        text-shadow: 0 2px 6px rgba(0, 0, 0, 0.75);
       }
       .streak-modal-subtitle {
         font-size: 0.72rem;
-        color: #94a3b8;
+        color: #e2e8f0;
         margin: 2px 0 0 0;
       }
       .btn-close-streak {
-        background: rgba(255, 255, 255, 0.08);
-        border: 1px solid rgba(255, 255, 255, 0.15);
-        color: #94a3b8;
+        background: rgba(15, 23, 42, 0.72);
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        color: #cbd5e1;
         font-size: 0.9rem;
         width: 30px;
         height: 30px;
@@ -218,7 +291,7 @@
         transition: all 0.2s;
       }
       .btn-close-streak:hover {
-        background: rgba(239, 68, 68, 0.2);
+        background: rgba(239, 68, 68, 0.25);
         color: #f87171;
         border-color: #ef4444;
       }
@@ -226,8 +299,9 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        background: rgba(15, 23, 42, 0.6);
-        border: 1px solid rgba(56, 189, 248, 0.2);
+        background: rgba(15, 23, 42, 0.78);
+        backdrop-filter: blur(8px);
+        border: 1px solid rgba(249, 115, 22, 0.32);
         border-radius: 12px;
         padding: 0.6rem 0.9rem;
         margin-bottom: 0.85rem;
@@ -240,6 +314,9 @@
         letter-spacing: 0.05em;
       }
       .streak-stat-value {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
         font-size: 0.95rem;
         font-weight: 900;
         color: #fdba74;
@@ -251,9 +328,9 @@
         margin-bottom: 1rem;
       }
       .streak-day-card {
-        background: rgba(15, 23, 42, 0.7);
-        border: 1.5px solid rgba(255, 255, 255, 0.1);
-        border-radius: 12px;
+        background: rgba(15, 23, 42, 0.82);
+        border: 1.5px solid rgba(255, 255, 255, 0.12);
+        border-radius: 13px;
         padding: 0.65rem 0.4rem;
         text-align: center;
         position: relative;
@@ -265,22 +342,22 @@
       }
       .streak-day-card.day-7-card {
         grid-column: span 3;
-        background: linear-gradient(135deg, rgba(234, 88, 12, 0.2) 0%, rgba(202, 138, 4, 0.25) 50%, rgba(15, 23, 42, 0.8) 100%);
-        border-color: rgba(250, 204, 21, 0.5);
-        padding: 0.75rem 0.85rem;
+        background: linear-gradient(135deg, rgba(234, 88, 12, 0.28) 0%, rgba(202, 138, 4, 0.28) 50%, rgba(15, 23, 42, 0.88) 100%);
+        border-color: rgba(250, 204, 21, 0.6);
+        padding: 0.78rem 0.85rem;
         flex-direction: row;
         justify-content: space-between;
         text-align: left;
       }
       .streak-day-card.claimed {
-        background: rgba(16, 185, 129, 0.1);
-        border-color: rgba(16, 185, 129, 0.4);
-        opacity: 0.8;
+        background: rgba(16, 185, 129, 0.14);
+        border-color: rgba(16, 185, 129, 0.45);
+        opacity: 0.88;
       }
       .streak-day-card.today-ready {
-        background: linear-gradient(145deg, rgba(249, 115, 22, 0.25) 0%, rgba(15, 23, 42, 0.9) 100%);
+        background: linear-gradient(145deg, rgba(249, 115, 22, 0.3) 0%, rgba(15, 23, 42, 0.92) 100%);
         border-color: #f97316;
-        box-shadow: 0 0 16px rgba(249, 115, 22, 0.35);
+        box-shadow: 0 0 18px rgba(249, 115, 22, 0.4);
         transform: scale(1.02);
       }
       .streak-day-num {
@@ -291,8 +368,10 @@
         margin-bottom: 0.25rem;
       }
       .streak-day-reward-ico {
-        font-size: 1.4rem;
-        line-height: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 32px;
         margin-bottom: 0.25rem;
       }
       .streak-day-reward-val {
@@ -303,10 +382,12 @@
       .streak-day-badge {
         font-size: 0.58rem;
         font-weight: 800;
-        padding: 1px 6px;
+        padding: 2px 7px;
         border-radius: 999px;
         margin-top: 0.3rem;
-        display: inline-block;
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
       }
       .streak-day-badge.badge-claimed {
         background: rgba(16, 185, 129, 0.2);
@@ -320,12 +401,12 @@
       }
       .streak-day-badge.badge-locked {
         background: rgba(255, 255, 255, 0.06);
-        color: #64748b;
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: #94a3b8;
+        border: 1px solid rgba(255, 255, 255, 0.12);
       }
       .btn-claim-streak {
         width: 100%;
-        padding: 0.75rem 1rem;
+        padding: 0.78rem 1rem;
         border-radius: 12px;
         font-size: 0.9rem;
         font-weight: 900;
@@ -335,6 +416,10 @@
         box-shadow: 0 4px 18px rgba(249, 115, 22, 0.45);
         cursor: pointer;
         transition: all 0.2s ease;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
       }
       .btn-claim-streak:hover:not(:disabled) {
         transform: translateY(-1px);
@@ -349,9 +434,13 @@
       }
       .streak-countdown-note {
         font-size: 0.72rem;
-        color: #94a3b8;
+        color: #cbd5e1;
         text-align: center;
         margin-top: 0.45rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
       }
     `;
     document.head.appendChild(style);
@@ -369,11 +458,11 @@
       <div class="streak-modal-card" onclick="event.stopPropagation()">
         <!-- Modal Header -->
         <div class="streak-modal-header">
-          <div style="display: flex; align-items: center; gap: 0.65rem;">
-            <div class="streak-fire-icon">🔥</div>
+          <div style="display: flex; align-items: center; gap: 0.7rem;">
+            <div class="streak-fire-icon">${streakSticker('sticker-flame.png', 'streak-3d-hero', 'Streak Flame')}</div>
             <div>
               <h2 class="streak-modal-title">Daily Streak Rewards</h2>
-              <p class="streak-modal-subtitle">Log in daily to claim free Tickets &amp; Coins!</p>
+              <p class="streak-modal-subtitle">Log in daily to claim free Tickets &amp; Diamonds!</p>
             </div>
           </div>
           <button type="button" class="btn-close-streak" onclick="closeDailyStreakModal()" title="Close">✕</button>
@@ -383,11 +472,11 @@
         <div class="streak-stats-bar">
           <div class="streak-stat-item">
             <span class="streak-stat-label">CURRENT STREAK</span>
-            <span class="streak-stat-value" id="modalStreakCountText">🔥 Day 1 of 7</span>
+            <span class="streak-stat-value" id="modalStreakCountText">${streakSticker('sticker-flame.png', 'streak-3d-ico-sm')} Day 1 of 7</span>
           </div>
           <div class="streak-stat-item" style="text-align: right;">
             <span class="streak-stat-label">TOTAL TICKETS</span>
-            <span class="streak-stat-value" id="modalTicketsTotalText" style="color: #38bdf8;">🎟️ 0</span>
+            <span class="streak-stat-value" id="modalTicketsTotalText" style="color: #38bdf8;">${streakSticker('sticker-ticket.png', 'streak-3d-ico-sm')} 0</span>
           </div>
         </div>
 
@@ -403,11 +492,12 @@
         <div class="streak-action-section">
           <div id="streakActionButtonsWrap" style="width: 100%;">
             <button type="button" class="btn-claim-streak" id="btnClaimDailyStreak" onclick="claimDailyStreakReward(false)">
-              🎁 Claim Today's Reward
+              ${streakSticker('sticker-gift.png', 'streak-3d-ico-sm')}
+              <span>Claim Today's Reward</span>
             </button>
           </div>
           <div class="streak-countdown-note" id="streakCountdownNote" style="display: none;">
-            ⏰ Next reward unlocks tomorrow at midnight!
+            ${streakSticker('sticker-timer.png', 'streak-3d-ico-xs')} Next reward unlocks tomorrow at midnight!
           </div>
         </div>
       </div>
@@ -415,17 +505,44 @@
     document.body.appendChild(overlay);
   }
 
+  function isAdminUserActive() {
+    try {
+      const uname = (localStorage.getItem('player_username') || '').trim();
+      return (
+        sessionStorage.getItem('admin_authenticated') === 'true' ||
+        sessionStorage.getItem('task_admin_authenticated') === 'true' ||
+        localStorage.getItem('is_admin_user_400kp') === 'true' ||
+        uname === '400@kp'
+      );
+    } catch (e) {
+      return false;
+    }
+  }
+
   function updateDailyStreakHeaderDisplays() {
     ensureDailyStreakStyles();
     const state = getDailyStreakState();
+    const adminHidden = isAdminUserActive();
 
     const streakDisplays = document.querySelectorAll('#userStreakDisplay, .user-streak-display');
     streakDisplays.forEach(el => {
       el.textContent = `Day ${state.activeDay}`;
     });
 
+    const streakLogos = document.querySelectorAll('.streak-pill .streak-logo');
+    streakLogos.forEach(logo => {
+      if (logo && !logo.querySelector('img')) {
+        logo.innerHTML = streakSticker('sticker-flame.png', 'streak-3d-ico-sm', 'Streak');
+      }
+    });
+
     const streakPills = document.querySelectorAll('#streakPill, .streak-pill');
     streakPills.forEach(pill => {
+      if (adminHidden) {
+        pill.style.display = 'none';
+      } else {
+        pill.style.display = '';
+      }
       if (state.canClaimToday) {
         pill.classList.add('has-claim');
       } else {
@@ -435,7 +552,7 @@
 
     const dots = document.querySelectorAll('#streakNotificationDot, .streak-badge-dot');
     dots.forEach(dot => {
-      dot.style.display = state.canClaimToday ? 'block' : 'none';
+      dot.style.display = (!adminHidden && state.canClaimToday) ? 'block' : 'none';
     });
   }
 
@@ -448,10 +565,10 @@
     const countdownNote = document.getElementById('streakCountdownNote');
 
     if (modalStreakText) {
-      modalStreakText.textContent = `🔥 Day ${state.activeDay} of 7`;
+      modalStreakText.innerHTML = `${streakSticker('sticker-flame.png', 'streak-3d-ico-sm')} Day ${state.activeDay} of 7`;
     }
     if (modalTicketsText) {
-      modalTicketsText.textContent = `🎟️ ${state.tickets.toLocaleString()}`;
+      modalTicketsText.innerHTML = `${streakSticker('sticker-ticket.png', 'streak-3d-ico-sm')} ${state.tickets.toLocaleString()}`;
     }
 
     if (grid) {
@@ -467,21 +584,23 @@
 
         let badgeHtml = '';
         if (isClaimed) {
-          badgeHtml = `<span class="streak-day-badge badge-claimed">✓ Claimed</span>`;
+          badgeHtml = `<span class="streak-day-badge badge-claimed">${streakSticker('sticker-check.png', 'streak-3d-ico-xs')} Claimed</span>`;
         } else if (isTodayReady) {
-          badgeHtml = `<span class="streak-day-badge badge-today">⭐ Ready!</span>`;
+          badgeHtml = `<span class="streak-day-badge badge-today">${streakSticker('sticker-star.png', 'streak-3d-ico-xs')} Ready!</span>`;
         } else {
-          badgeHtml = `<span class="streak-day-badge badge-locked">🔒 Day ${r.day}</span>`;
+          badgeHtml = `<span class="streak-day-badge badge-locked">Day ${r.day}</span>`;
         }
 
         if (isDay7) {
           return `
             <div class="${cardClass}">
               <div style="display:flex; align-items:center; gap:0.65rem;">
-                <span style="font-size:1.8rem;">👑</span>
+                ${streakSticker('sticker-crown.png', 'streak-3d-ico-lg', 'Grand Prize')}
                 <div>
                   <div style="font-size:0.68rem; font-weight:800; color:#facc15; letter-spacing:0.06em;">DAY 7 • GRAND PRIZE</div>
-                  <div style="font-size:0.88rem; font-weight:900; color:#ffffff; margin-top:2px;">🎟️ 30 Tickets + 💎 30 Diamonds</div>
+                  <div style="font-size:0.84rem; font-weight:900; color:#ffffff; margin-top:2px; display:flex; align-items:center; gap:4px; flex-wrap:wrap;">
+                    ${streakSticker('sticker-ticket.png', 'streak-3d-ico-xs')} 30 Tickets + ${streakSticker('sticker-diamond.png', 'streak-3d-ico-xs')} 30 Diamonds
+                  </div>
                 </div>
               </div>
               <div>${badgeHtml}</div>
@@ -489,11 +608,13 @@
           `;
         }
 
-        const rewardIcon = r.diamonds > 0 ? '💎' : '🎟️';
+        const rewardImg = r.diamonds > 0
+          ? streakSticker('sticker-diamond.png', 'streak-3d-ico-md', 'Diamonds')
+          : streakSticker('sticker-ticket.png', 'streak-3d-ico-md', 'Tickets');
         return `
           <div class="${cardClass}">
             <div class="streak-day-num">DAY ${r.day}</div>
-            <div class="streak-day-reward-ico">${rewardIcon}</div>
+            <div class="streak-day-reward-ico">${rewardImg}</div>
             <div class="streak-day-reward-val">${r.label}</div>
             ${badgeHtml}
           </div>
@@ -508,15 +629,16 @@
       if (state.isStreakBroken && !state.hasClaimedToday) {
         brokenWrap.innerHTML = `
           <div class="streak-broken-banner" style="background: rgba(239, 68, 68, 0.14); border: 1.5px solid rgba(239, 68, 68, 0.45); border-radius: 14px; padding: 0.6rem 0.85rem; margin-bottom: 0.75rem; text-align: center;">
-            <div style="font-weight: 800; color: #f87171; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; gap: 0.35rem; margin-bottom: 0.45rem;">
-              <span>⚠️</span> Missed Yesterday's Streak (Was Day ${state.brokenStreakCount})!
+            <div style="font-weight: 800; color: #f87171; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; gap: 0.4rem; margin-bottom: 0.45rem;">
+              ${streakSticker('sticker-warning.png', 'streak-3d-ico-sm')}
+              <span>Missed Yesterday's Streak (Was Day ${state.brokenStreakCount})!</span>
             </div>
             <div style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;">
-              <button type="button" onclick="restoreStreakWithTickets()" style="background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%); color: #ffffff; font-weight: 800; padding: 0.45rem 0.85rem; border-radius: 10px; border: none; cursor: pointer; font-size: 0.78rem; box-shadow: 0 4px 12px rgba(139, 92, 246, 0.4);">
-                🛡️ Save Streak (200 🎟️)
+              <button type="button" onclick="restoreStreakWithTickets()" style="display:inline-flex;align-items:center;gap:5px;background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%); color: #ffffff; font-weight: 800; padding: 0.45rem 0.85rem; border-radius: 10px; border: none; cursor: pointer; font-size: 0.78rem; box-shadow: 0 4px 12px rgba(139, 92, 246, 0.4);">
+                ${streakSticker('sticker-shield.png', 'streak-3d-ico-xs')} Save Streak (200 ${streakSticker('sticker-ticket.png', 'streak-3d-ico-xs')})
               </button>
               <button type="button" onclick="acceptStreakResetWithPenalty()" style="background: rgba(255, 255, 255, 0.08); color: #94a3b8; font-weight: 700; padding: 0.45rem 0.75rem; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.15); cursor: pointer; font-size: 0.75rem;">
-                Reset (-10 🎯)
+                Reset (-10 Tasks)
               </button>
             </div>
           </div>
@@ -530,34 +652,36 @@
       if (state.canClaimToday) {
         const activeReward = STREAK_REWARDS.find(r => r.day === state.activeDay) || STREAK_REWARDS[0];
         actionWrap.innerHTML = `
-          <button type="button" class="btn-claim-streak" style="width: 100%; background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);" onclick="claimDailyStreakReward(false)">
-            🎁 Claim Day ${state.activeDay} Reward (${activeReward.label})
+          <button type="button" class="btn-claim-streak" style="width: 100%; background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); border-color: #38bdf8;" onclick="claimDailyStreakReward(false)">
+            ${streakSticker('sticker-gift.png', 'streak-3d-ico-sm')}
+            <span>Claim Day ${state.activeDay} Reward (${activeReward.label})</span>
           </button>
         `;
         if (countdownNote) countdownNote.style.display = 'none';
       } else {
         actionWrap.innerHTML = `
-          <button type="button" class="btn-claim-streak" disabled style="opacity: 0.65; cursor: not-allowed; width: 100%;">
-            ✓ Claimed Today (Day ${state.activeDay})
+          <button type="button" class="btn-claim-streak" disabled style="opacity: 0.68; cursor: not-allowed; width: 100%;">
+            ${streakSticker('sticker-check.png', 'streak-3d-ico-sm')}
+            <span>Claimed Today (Day ${state.activeDay})</span>
           </button>
         `;
         if (countdownNote) {
-          countdownNote.style.display = 'block';
-          countdownNote.textContent = '⏰ Next streak reward unlocks tomorrow at midnight!';
+          countdownNote.style.display = 'flex';
+          countdownNote.innerHTML = `${streakSticker('sticker-timer.png', 'streak-3d-ico-xs')} Next streak reward unlocks tomorrow at midnight!`;
         }
       }
     } else if (claimBtn) {
       if (state.canClaimToday) {
         const activeReward = STREAK_REWARDS.find(r => r.day === state.activeDay) || STREAK_REWARDS[0];
         claimBtn.disabled = false;
-        claimBtn.innerHTML = `🎁 Claim Day ${state.activeDay} Reward (${activeReward.label})`;
+        claimBtn.innerHTML = `${streakSticker('sticker-gift.png', 'streak-3d-ico-sm')} <span>Claim Day ${state.activeDay} Reward (${activeReward.label})</span>`;
         if (countdownNote) countdownNote.style.display = 'none';
       } else {
         claimBtn.disabled = true;
-        claimBtn.innerHTML = `✓ Claimed Today (Day ${state.activeDay})`;
+        claimBtn.innerHTML = `${streakSticker('sticker-check.png', 'streak-3d-ico-sm')} <span>Claimed Today (Day ${state.activeDay})</span>`;
         if (countdownNote) {
-          countdownNote.style.display = 'block';
-          countdownNote.textContent = '⏰ Next streak reward unlocks tomorrow at midnight!';
+          countdownNote.style.display = 'flex';
+          countdownNote.innerHTML = `${streakSticker('sticker-timer.png', 'streak-3d-ico-xs')} Next streak reward unlocks tomorrow at midnight!`;
         }
       }
     }
@@ -585,6 +709,8 @@
     localStorage.setItem(STREAK_LAST_DATE_KEY, yesterday);
     if (state.brokenStreakCount) {
       localStorage.setItem(STREAK_COUNT_KEY, state.brokenStreakCount.toString());
+      localStorage.setItem('task_game_streak_days', state.brokenStreakCount.toString());
+      localStorage.setItem('user_streak_days', state.brokenStreakCount.toString());
     }
 
     const okMsg = '🛡️ Streak Saved! 200 Tickets used. Consecutive streak continues with NO level penalty!';
@@ -593,6 +719,8 @@
 
     updateDailyStreakHeaderDisplays();
     renderDailyStreakModalContent();
+    if (typeof window.updateProfileOverviewStats === 'function') window.updateProfileOverviewStats();
+    window.dispatchEvent(new CustomEvent('streak:updated'));
     if (typeof updateDisplays === 'function') updateDisplays();
     if (typeof updateTaskPassUI === 'function') updateTaskPassUI();
 
@@ -621,6 +749,8 @@
 
     // Reset streak count to 0
     localStorage.setItem(STREAK_COUNT_KEY, '0');
+    localStorage.setItem('task_game_streak_days', '0');
+    localStorage.setItem('user_streak_days', '0');
     // Set lastClaimDate to something old so activeDay is 1
     localStorage.setItem(STREAK_LAST_DATE_KEY, '2020-01-01');
 
@@ -630,6 +760,8 @@
 
     updateDailyStreakHeaderDisplays();
     renderDailyStreakModalContent();
+    if (typeof window.updateProfileOverviewStats === 'function') window.updateProfileOverviewStats();
+    window.dispatchEvent(new CustomEvent('streak:updated'));
     if (typeof renderTasks === 'function') renderTasks();
     if (typeof updateDisplays === 'function') updateDisplays();
     if (typeof updateTaskPassUI === 'function') updateTaskPassUI();
@@ -696,6 +828,7 @@
         localStorage.setItem(STREAK_COUNT_KEY, state.activeDay.toString());
         localStorage.setItem(STREAK_LAST_DATE_KEY, state.today);
         localStorage.setItem('user_streak_days', state.activeDay.toString());
+        localStorage.setItem('task_game_streak_days', state.activeDay.toString());
 
         const txId = `daily_streak_${state.today}_d${state.activeDay}`;
         if (window.Firebase && typeof window.Firebase.atomicBalanceMutation === 'function') {
@@ -788,7 +921,11 @@
       renderDailyStreakModalContent();
       if (typeof renderTasks === 'function') renderTasks();
       if (typeof updateDisplays === 'function') updateDisplays();
-    if (typeof updateTaskPassUI === 'function') updateTaskPassUI();
+      if (typeof updateTaskPassUI === 'function') updateTaskPassUI();
+      if (typeof window.updateProfileOverviewStats === 'function') window.updateProfileOverviewStats();
+      try {
+        window.dispatchEvent(new CustomEvent('streak:updated', { detail: { streak: state.activeDay } }));
+      } catch (e) {}
 
       // 7. Toast / Celebration
       const parts = [];
@@ -842,11 +979,17 @@
   try {
     const bc = new BroadcastChannel('nova_task_sync');
     bc.onmessage = function(ev) {
-      if (ev.data && (ev.data.type === 'DAILY_STREAK_CLAIMED' || ev.data.type === 'TASK_UNLOCKED')) {
+      if (ev.data && (
+        ev.data.type === 'DAILY_STREAK_CLAIMED' ||
+        ev.data.type === 'TASK_UNLOCKED' ||
+        ev.data.type === 'STREAK_RESTORED' ||
+        ev.data.type === 'STREAK_RESET_PENALTY'
+      )) {
         updateDailyStreakHeaderDisplays();
         renderDailyStreakModalContent();
         if (typeof updateDisplays === 'function') updateDisplays();
-    if (typeof updateTaskPassUI === 'function') updateTaskPassUI();
+        if (typeof updateTaskPassUI === 'function') updateTaskPassUI();
+        if (typeof window.updateProfileOverviewStats === 'function') window.updateProfileOverviewStats();
       }
     };
   } catch(e) {}
@@ -879,13 +1022,16 @@
   };
 
   // Auto-init on load
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-      ensureDailyStreakStyles();
-      updateDailyStreakHeaderDisplays();
-    });
-  } else {
+  const syncDailyStreakOnReady = () => {
     ensureDailyStreakStyles();
     updateDailyStreakHeaderDisplays();
+    if (typeof window.updateProfileOverviewStats === 'function') {
+      window.updateProfileOverviewStats();
+    }
+  };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', syncDailyStreakOnReady);
+  } else {
+    syncDailyStreakOnReady();
   }
 })();

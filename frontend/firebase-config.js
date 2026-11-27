@@ -13,6 +13,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import { 
   getFirestore, 
+  disableNetwork,
   doc, 
   setDoc, 
   getDoc, 
@@ -20,6 +21,11 @@ import {
   onSnapshot, 
   collection, 
   getDocs,
+  query,
+  where,
+  limit,
+  orderBy,
+  startAfter,
   runTransaction 
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import {
@@ -28,9 +34,14 @@ import {
   set,
   get,
   update,
+  remove,
   onValue,
   push,
   child,
+  query as rtdbQuery,
+  orderByChild,
+  equalTo,
+  limitToLast,
   runTransaction as rtdbRunTransaction
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
 
@@ -42,8 +53,8 @@ const firebaseConfig = {
   projectId: "taskads-f894a",
   storageBucket: "taskads-f894a.firebasestorage.app",
   messagingSenderId: "365573359165",
-  appId: "1:365573359165:web:77d5cf4cae5c52abe00c54",
-  measurementId: "G-B800QRE7NV"
+  appId: "1:365573359165:web:5733197eae26d52fe00c54",
+  measurementId: "G-P95N2RG5NN"
 };
 
 // Initialize Firebase App
@@ -53,6 +64,30 @@ let db = null;
 let auth = null;
 let rtdb = null;
 
+const FIRESTORE_QUOTA_COOLDOWN_KEY = 'tap_empire_fs_quota_until';
+function isFirestoreQuotaBlocked() {
+  try {
+    const until = parseInt(sessionStorage.getItem(FIRESTORE_QUOTA_COOLDOWN_KEY) || '0', 10);
+    return until > Date.now();
+  } catch (e) {
+    return false;
+  }
+}
+function markFirestoreQuotaBlocked(err) {
+  const code = String((err && err.code) || '').toLowerCase();
+  const msg = String((err && err.message) || err || '');
+  if (code === 'resource-exhausted' || /quota exceeded/i.test(msg)) {
+    try {
+      sessionStorage.setItem(FIRESTORE_QUOTA_COOLDOWN_KEY, String(Date.now() + 5 * 60 * 1000));
+    } catch (e) {}
+    if (db && typeof disableNetwork === 'function') {
+      disableNetwork(db).catch(() => {});
+    }
+    return true;
+  }
+  return false;
+}
+
 try {
   app = initializeApp(firebaseConfig);
   console.log("%c[Firebase] Initialized with project: taskads-f894a", "color: #38bdf8; font-weight: bold;");
@@ -61,6 +96,8 @@ try {
   isSupported().then((supported) => {
     if (supported) {
       analytics = getAnalytics(app);
+      window.firebaseAnalytics = analytics;
+      if (window.Firebase) window.Firebase.analytics = analytics;
       console.log("%c[Firebase Analytics] Active", "color: #10b981; font-weight: bold;");
     }
   }).catch(() => {});
@@ -90,6 +127,23 @@ try {
   }
 } catch (e) {
   console.error("[Firebase] Initialization error:", e);
+}
+
+/**
+ * Ensure Firebase Auth has an active user (existing or anonymous) before rule-protected writes.
+ */
+async function ensureFirebaseAuthReady(timeoutMs = 3000) {
+  if (!auth) return null;
+  if (auth.currentUser) return auth.currentUser;
+  try {
+    const res = await Promise.race([
+      signInAnonymously(auth),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('AUTH_TIMEOUT')), timeoutMs))
+    ]);
+    return (res && res.user) || auth.currentUser || null;
+  } catch (e) {
+    return auth.currentUser || null;
+  }
 }
 
 // Storage Keys
@@ -238,12 +292,33 @@ async function signInWithEmail(email, password) {
       }
     }
 
-    // Apply cloud data to localStorage balances if available
+    // Apply cloud data to localStorage balances cleanly if available
     if (cloudData) {
-      if (typeof cloudData.coins === 'number') localStorage.setItem('user_coins', cloudData.coins.toString());
-      if (typeof cloudData.stars === 'number') localStorage.setItem('user_stars', cloudData.stars.toString());
-      if (typeof cloudData.tasksCompleted === 'number') localStorage.setItem('completed_tasks_count', cloudData.tasksCompleted.toString());
-      if (typeof cloudData.adsWatched === 'number') localStorage.setItem('ads_watched_count', cloudData.adsWatched.toString());
+      if (typeof cloudData.coins === 'number') {
+        localStorage.setItem('user_coins', cloudData.coins.toString());
+        localStorage.setItem('task_game_coins', cloudData.coins.toString());
+      }
+      if (typeof cloudData.stars === 'number') {
+        localStorage.setItem('user_stars', cloudData.stars.toString());
+        localStorage.setItem('task_game_stars', cloudData.stars.toString());
+      }
+      if (typeof cloudData.tickets === 'number') {
+        localStorage.setItem('task_user_tickets', cloudData.tickets.toString());
+        localStorage.setItem('user_tickets', cloudData.tickets.toString());
+        localStorage.setItem('task_game_tickets', cloudData.tickets.toString());
+      }
+      if (typeof cloudData.diamonds === 'number') {
+        localStorage.setItem('task_user_diamonds', cloudData.diamonds.toString());
+        localStorage.setItem('user_diamonds', cloudData.diamonds.toString());
+      }
+      if (typeof cloudData.tasksCompleted === 'number') {
+        localStorage.setItem('completed_tasks_count', cloudData.tasksCompleted.toString());
+        localStorage.setItem('task_game_total_tasks_completed', cloudData.tasksCompleted.toString());
+      }
+      if (typeof cloudData.adsWatched === 'number') {
+        localStorage.setItem('ads_watched_count', cloudData.adsWatched.toString());
+        localStorage.setItem('task_game_ads_watched_count', cloudData.adsWatched.toString());
+      }
       if (cloudData.displayName) localStorage.setItem('player_username', cloudData.displayName);
       if (cloudData.avatar) localStorage.setItem('player_avatar', cloudData.avatar);
     }
@@ -255,6 +330,8 @@ async function signInWithEmail(email, password) {
       localStorage.setItem('player_username', user.displayName || user.email.split('@')[0]);
     }
 
+    startRealtimeUserSync(user.uid);
+    initCloudBalances(user.uid);
     notifyAuthChanged(user, cloudData);
 
     return { success: true, user, profile: cloudData };
@@ -647,8 +724,93 @@ function updateAllDomBalances(coins, stars, tickets, diamonds) {
       else el.textContent = diamondsFmt;
     });
   } catch (e) {}
+
+  try {
+    if (typeof window.syncAllHeaderPlayerAvatars === 'function') {
+      window.syncAllHeaderPlayerAvatars();
+    }
+  } catch (e) {}
 }
 window.updateAllDomBalances = updateAllDomBalances;
+
+// =============================================================================
+// SHARED 3D BORDERLESS STICKER AVATAR SYSTEM
+// =============================================================================
+window.TAP_AVATARS = [
+  { id: 'avatar-1.png', label: 'Ninja', fallbackEmoji: '⚡' },
+  { id: 'avatar-2.png', label: 'Prince', fallbackEmoji: '👑' },
+  { id: 'avatar-3.png', label: 'Fox', fallbackEmoji: '🦊' },
+  { id: 'avatar-4.png', label: 'Lion', fallbackEmoji: '🦁' },
+  { id: 'avatar-5.png', label: 'Robot', fallbackEmoji: '🤖' },
+  { id: 'avatar-6.png', label: 'Gem', fallbackEmoji: '💎' },
+  { id: 'avatar-7.png', label: 'Astronaut', fallbackEmoji: '🚀' },
+  { id: 'avatar-8.png', label: 'Tiger', fallbackEmoji: '🐯' }
+];
+
+const AVATAR_LEGACY_MAP = {
+  '⚡': 'avatar-1.png',
+  '🥷': 'avatar-1.png',
+  '🛡️': 'avatar-1.png',
+  '👑': 'avatar-2.png',
+  '💰': 'avatar-2.png',
+  '🎁': 'avatar-2.png',
+  '⭐': 'avatar-2.png',
+  '🦊': 'avatar-3.png',
+  '🦁': 'avatar-4.png',
+  '🤖': 'avatar-5.png',
+  '💻': 'avatar-5.png',
+  '🎮': 'avatar-5.png',
+  '💎': 'avatar-6.png',
+  '🛍️': 'avatar-6.png',
+  '🚀': 'avatar-7.png',
+  '👤': 'avatar-7.png',
+  '🐯': 'avatar-8.png',
+  '🎯': 'avatar-8.png',
+  '🔥': 'avatar-8.png'
+};
+
+window.resolvePlayerAvatarFile = function resolvePlayerAvatarFile(raw) {
+  const s = String(raw || '').trim();
+  const match = s.match(/avatar-([1-8])\.png/i);
+  if (match) return `avatar-${match[1]}.png`;
+  if (AVATAR_LEGACY_MAP[s]) return AVATAR_LEGACY_MAP[s];
+  return 'avatar-1.png';
+};
+
+window.getPlayerAvatarSrc = function getPlayerAvatarSrc(raw, basePrefix) {
+  const file = window.resolvePlayerAvatarFile(raw);
+  let prefix = basePrefix;
+  if (!prefix) {
+    const isAdmin = typeof window !== 'undefined' && window.location && /\/admin(\/|$)/i.test(window.location.pathname || '');
+    prefix = isAdmin ? '../frontend/assets/avatars/' : '../../assets/avatars/';
+  }
+  return `${prefix}${file}`;
+};
+
+window.getPlayerAvatarImgHtml = function getPlayerAvatarImgHtml(raw, sizePx = 36, basePrefix = '') {
+  const src = window.getPlayerAvatarSrc(raw, basePrefix);
+  const px = Number(sizePx) || 36;
+  return `<img src="${src}" alt="Avatar" class="sticker-3d-avatar-img" style="width:${px}px;height:${px}px;object-fit:contain;display:block;background:transparent;border:none;border-radius:0;box-shadow:none;pointer-events:none;filter:drop-shadow(0 3px 6px rgba(0,0,0,0.45));" />`;
+};
+
+window.renderPlayerAvatarEl = function renderPlayerAvatarEl(el, raw, sizePx = 36, basePrefix = '') {
+  if (!el) return;
+  el.style.background = 'transparent';
+  el.style.border = 'none';
+  el.style.boxShadow = 'none';
+  el.style.borderRadius = '0';
+  el.innerHTML = window.getPlayerAvatarImgHtml(raw, sizePx, basePrefix);
+};
+
+window.syncAllHeaderPlayerAvatars = function syncAllHeaderPlayerAvatars() {
+  if (typeof document === 'undefined') return;
+  const saved = (typeof localStorage !== 'undefined' ? localStorage.getItem('player_avatar') : '') || 'avatar-1.png';
+  document.querySelectorAll('.user-avatar, #headerUserAvatar').forEach((el) => {
+    if (!el || el.tagName === 'BUTTON' || (el.getAttribute('onclick') || '').includes('navigateBack')) return;
+    if (el.closest && el.closest('#adminTopHeaderBar')) return;
+    window.renderPlayerAvatarEl(el, saved, 36);
+  });
+};
 
 // Global Escape Key Listener for Dialog / Modal Dismissals
 if (typeof window !== 'undefined') {
@@ -657,6 +819,7 @@ if (typeof window !== 'undefined') {
       const modalSelectors = [
         '#globalBalanceManagerModal',
         '#rewardedAdModalOverlay',
+        '#taskPrizePopupOverlay',
         '#taskVerifyModalOverlay',
         '#taskUnlockModalOverlay',
         '#vipSubscriptionModal',
@@ -685,6 +848,7 @@ if (typeof window !== 'undefined') {
       });
 
       try { if (typeof window.closeVerifyModal === 'function') window.closeVerifyModal(); } catch(err) {}
+      try { if (typeof window.closeTaskPrizePopup === 'function') window.closeTaskPrizePopup(); } catch(err) {}
       try { if (typeof window.closeTaskUnlockModal === 'function') window.closeTaskUnlockModal(); } catch(err) {}
       try { if (typeof window.closeSubscriptionModal === 'function') window.closeSubscriptionModal(); } catch(err) {}
       try { if (typeof window.closeBuyModal === 'function') window.closeBuyModal(); } catch(err) {}
@@ -706,10 +870,44 @@ if (typeof window !== 'undefined') {
 let isInternalSync = false;
 const rawSetItem = localStorage.setItem.bind(localStorage);
 
-// Auto-intercept localStorage.setItem for currency keys to keep keys in sync and trigger cloud save
+const CLOUD_STATE_SYNC_KEYS = new Set([
+  'task_game_shop_unlocks',
+  'task_daily_streak_count',
+  'task_daily_streak_last_date',
+  'task_daily_streak_penalty_date',
+  'task_game_daily_streak_v2',
+  'season_6_pass_activated',
+  'season_battle_pass_claimed',
+  'task_pass_level',
+  'task_pass_total_completed',
+  'referral_star_milestones_claimed',
+  'user_referral_code',
+  'task_game_user_referral_code',
+  'task_game_referrals_list',
+  'task_referral_count',
+  'user_support_tickets',
+  'task_vip_pass_active',
+  'tap_empire_vip_plan',
+  'tap_empire_daily_progression',
+  'tap_empire_category_daily_counts',
+  'tap_empire_common_completed_ids',
+  'tap_empire_google_completed_ids',
+  'tap_empire_star_unlocked_costs',
+  'tap_empire_pro_group_state',
+  'tap_empire_pending_prizes',
+  'task_completed_tasks',
+  'task_unlocked_tasks',
+  'wallet_claimed_offers',
+  'wallet_ultra_task_credits',
+  'wallet_ultra_total_completed'
+]);
+
+// Auto-intercept localStorage.setItem for currency & progression keys to keep keys in sync and trigger cloud save
 localStorage.setItem = function(key, val) {
   rawSetItem(key, val);
-  if (!isInternalSync && (key === 'task_game_coins' || key === 'user_coins' || key === 'task_game_stars' || key === 'user_stars' || key === 'task_user_tickets' || key === 'user_tickets' || key === 'task_game_tickets')) {
+  if (isInternalSync) return;
+
+  if (key === 'task_game_coins' || key === 'user_coins' || key === 'task_game_stars' || key === 'user_stars' || key === 'task_user_tickets' || key === 'user_tickets' || key === 'task_game_tickets' || key === 'task_user_diamonds' || key === 'user_diamonds') {
     isInternalSync = true;
     try {
       if (key === 'task_game_coins') rawSetItem('user_coins', val);
@@ -725,20 +923,22 @@ localStorage.setItem = function(key, val) {
       } else if (key === 'task_game_tickets') {
         rawSetItem('task_user_tickets', val);
         rawSetItem('user_tickets', val);
+      } else if (key === 'task_user_diamonds') {
+        rawSetItem('user_diamonds', val);
+      } else if (key === 'user_diamonds') {
+        rawSetItem('task_user_diamonds', val);
       }
     } catch (e) {}
     isInternalSync = false;
 
     updateAllDomBalances();
-    // Instant cloud profile save on currency mutation
-    if (typeof saveCurrentProfileToFirestore === 'function') {
-      saveCurrentProfileToFirestore();
-    }
-    scheduleCloudBalanceSync(80);
+    // Debounced cloud profile save on currency mutation (prevents write storms)
+    scheduleCloudBalanceSync(1200);
 
     try {
       const ch = new BroadcastChannel(SYNC_CHANNEL_NAME);
       ch.postMessage({ type: 'BALANCES_UPDATED', key, val, timestamp: Date.now() });
+      ch.close();
     } catch (e) {}
 
     window.dispatchEvent(new CustomEvent('balance:changed', {
@@ -746,18 +946,24 @@ localStorage.setItem = function(key, val) {
         coins: parseInt(localStorage.getItem('task_game_coins') || '0', 10),
         stars: parseInt(localStorage.getItem('task_game_stars') || '0', 10),
         tickets: parseInt(localStorage.getItem('task_user_tickets') || localStorage.getItem('user_tickets') || localStorage.getItem('task_game_tickets') || '0', 10),
+        diamonds: parseInt(localStorage.getItem('task_user_diamonds') || localStorage.getItem('user_diamonds') || '0', 10),
         key,
         val
       }
     }));
+  } else if (CLOUD_STATE_SYNC_KEYS.has(key)) {
+    scheduleCloudBalanceSync(1200);
   }
 };
 
 /**
- * Save current user profile & balances to Firestore (users/{uid})
+ * Save current user profile & balances to Firestore & RTDB (users/{uid})
  */
 async function saveCurrentProfileToFirestore(userInstance = null) {
-  if (!db) return false;
+  if (!db && !rtdb) return false;
+  if (auth && !auth.currentUser) {
+    await ensureFirebaseAuthReady(2500);
+  }
   const currentUser = userInstance || (auth ? auth.currentUser : null);
   const uid = currentUser ? currentUser.uid : getEffectivePlayerUid();
   if (!uid) return false;
@@ -768,16 +974,23 @@ async function saveCurrentProfileToFirestore(userInstance = null) {
     const ticketsRaw = localStorage.getItem('task_user_tickets') || localStorage.getItem('user_tickets') || localStorage.getItem('task_game_tickets') || '0';
     const diamondsRaw = localStorage.getItem('task_user_diamonds') || localStorage.getItem('user_diamonds') || '0';
     const tasksRaw = localStorage.getItem('completed_tasks_count') || localStorage.getItem('task_game_total_tasks_completed') || '0';
+    const eventTasksRaw = localStorage.getItem('task_game_event_tasks_count') || localStorage.getItem('task_game_event_tasks') || '0';
     const adsRaw = localStorage.getItem('ads_watched_count') || localStorage.getItem('task_game_ads_watched_count') || '0';
+    const passLevelRaw = localStorage.getItem('task_pass_level') || '1';
+    const passTotalRaw = localStorage.getItem('task_pass_total_completed') || '0';
 
     const coins = parseInt(coinsRaw, 10);
     const stars = parseInt(starsRaw, 10);
     const tickets = parseInt(ticketsRaw, 10);
     const diamonds = parseInt(diamondsRaw, 10);
     const tasksCompleted = parseInt(tasksRaw, 10);
+    const eventTasks = parseInt(eventTasksRaw, 10);
     const adsWatched = parseInt(adsRaw, 10);
+    const passLevel = parseInt(passLevelRaw, 10);
+    const passTotalCompleted = parseInt(passTotalRaw, 10);
     const displayName = localStorage.getItem('player_username') || (currentUser ? currentUser.displayName : 'Player');
     const avatar = localStorage.getItem('player_avatar') || '⚡';
+    const authUid = (auth && auth.currentUser && auth.currentUser.uid) ? auth.currentUser.uid : '';
     let email = currentUser && currentUser.email ? currentUser.email : (localStorage.getItem('player_email') || '');
     if (!email || !email.includes('@')) {
       email = `${String(uid).replace(/[^a-zA-Z0-9]/g, '')}@player.app`;
@@ -789,25 +1002,49 @@ async function saveCurrentProfileToFirestore(userInstance = null) {
 
     const userPayload = {
       uid: String(uid),
+      id: String(uid),
+      ownerAuthUid: authUid || String(uid),
       email: email,
       displayName: displayName,
+      name: displayName,
+      displayNameLower: String(displayName || '').trim().toLowerCase(),
       avatar: avatar,
-      coins: isNaN(coins) ? 0 : coins,
-      stars: isNaN(stars) ? 0 : stars,
-      tickets: isNaN(tickets) ? 0 : tickets,
-      diamonds: isNaN(diamonds) ? 0 : diamonds,
+      coins: isNaN(coins) ? 0 : Math.max(0, coins),
+      stars: isNaN(stars) ? 0 : Math.max(0, stars),
+      tickets: isNaN(tickets) ? 0 : Math.max(0, tickets),
+      diamonds: isNaN(diamonds) ? 0 : Math.max(0, diamonds),
       ultraCredits: Math.max(0, parseInt(localStorage.getItem('wallet_ultra_task_credits') || '0', 10) || 0),
       ultraTotalCompleted: Math.max(0, parseInt(localStorage.getItem('wallet_ultra_total_completed') || '0', 10) || 0),
       claimedWalletOffers: safeJson('wallet_claimed_offers') || {},
-      tasksCompleted: isNaN(tasksCompleted) ? 0 : tasksCompleted,
-      adsWatched: isNaN(adsWatched) ? 0 : adsWatched,
+      tasksCompleted: isNaN(tasksCompleted) ? 0 : Math.max(0, tasksCompleted),
+      totalTasks: isNaN(tasksCompleted) ? 0 : Math.max(0, tasksCompleted),
+      eventTasks: isNaN(eventTasks) ? 0 : Math.max(0, eventTasks),
+      passLevel: isNaN(passLevel) ? 1 : Math.max(1, Math.min(500, passLevel)),
+      passTotalCompleted: isNaN(passTotalCompleted) ? 0 : Math.max(0, passTotalCompleted),
+      adsWatched: isNaN(adsWatched) ? 0 : Math.max(0, adsWatched),
       completedTasks: safeJson('task_completed_tasks') || {},
       unlockedTasks: safeJson('task_unlocked_tasks') || {},
+      commonCompletedIds: safeJson('tap_empire_common_completed_ids') || {},
+      googleCompletedIds: safeJson('tap_empire_google_completed_ids') || [],
+      starUnlockedCosts: safeJson('tap_empire_star_unlocked_costs') || {},
       proGroupState: safeJson('tap_empire_pro_group_state') || {},
+      pendingPrizes: safeJson('tap_empire_pending_prizes') || {},
       dailyStreak: safeJson('task_game_daily_streak_v2') || {},
+      dailyStreakCount: Math.max(0, parseInt(localStorage.getItem('task_daily_streak_count') || '0', 10) || 0),
+      dailyStreakLastDate: String(localStorage.getItem('task_daily_streak_last_date') || ''),
+      dailyStreakPenaltyDate: String(localStorage.getItem('task_daily_streak_penalty_date') || ''),
       dailyProgression: safeJson('tap_empire_daily_progression') || {},
       vipPlan: safeJson('tap_empire_vip_plan') || null,
+      vipPassActive: localStorage.getItem('task_vip_pass_active') === 'true',
       categoryDailyCounts: safeJson('tap_empire_category_daily_counts') || {},
+      shopUnlocks: safeJson('task_game_shop_unlocks') || {},
+      passActivated: localStorage.getItem('season_6_pass_activated') === 'true',
+      passClaimed: safeJson('season_battle_pass_claimed') || {},
+      referralMilestonesClaimed: safeJson('referral_star_milestones_claimed') || {},
+      userReferralCode: String(localStorage.getItem('user_referral_code') || localStorage.getItem('task_game_user_referral_code') || ''),
+      referralsList: safeJson('task_game_referrals_list') || [],
+      referralCount: Math.max(0, parseInt(localStorage.getItem('task_referral_count') || '0', 10) || 0),
+      supportTickets: safeJson('user_support_tickets') || [],
       sunflowerState: localStorage.getItem('sunflower_game_state') || null,
       honeyBeeState: localStorage.getItem('honeybee_game_state') || null,
       gameStats: {
@@ -818,7 +1055,7 @@ async function saveCurrentProfileToFirestore(userInstance = null) {
       updatedAt: Date.now()
     };
 
-    if (db) {
+    if (db && !isFirestoreQuotaBlocked()) {
       const userRef = doc(db, 'users', String(uid));
       await setDoc(userRef, userPayload, { merge: true });
     }
@@ -833,129 +1070,267 @@ async function saveCurrentProfileToFirestore(userInstance = null) {
 
     return true;
   } catch (err) {
+    markFirestoreQuotaBlocked(err);
     console.warn("[Firebase] Could not save profile to cloud:", err.message);
     return false;
   }
 }
 
+let _lastUserCloudAppliedAt = 0;
+
+function applyIncomingUserCloudData(data, { forceBalanceEvents = false } = {}) {
+  if (!data || typeof data !== 'object') return false;
+  const incomingUpdatedAt = Number(data.updatedAt || data.lastActive || 0) || 0;
+  if (_lastUserCloudAppliedAt > 0 && incomingUpdatedAt > 0 && incomingUpdatedAt + 1000 < _lastUserCloudAppliedAt) {
+    return false;
+  }
+  if (incomingUpdatedAt > _lastUserCloudAppliedAt) {
+    _lastUserCloudAppliedAt = incomingUpdatedAt;
+  }
+
+  const localLastReset = parseInt(localStorage.getItem('task_game_last_reset_at') || '0', 10) || 0;
+  if (data.resetAt && Number(data.resetAt) > localLastReset) {
+    resetLocalPlayerSessionKeys();
+    rawSetItem('task_game_last_reset_at', String(data.resetAt));
+  }
+
+  let changed = forceBalanceEvents;
+  const currentCoins = parseInt(localStorage.getItem('task_game_coins') || '0', 10) || 0;
+  const currentStars = parseInt(localStorage.getItem('task_game_stars') || '0', 10) || 0;
+  const currentTickets = parseInt(localStorage.getItem('task_user_tickets') || '0', 10) || 0;
+  const currentDiamonds = parseInt(localStorage.getItem('task_user_diamonds') || '0', 10) || 0;
+
+  isInternalSync = true;
+  try {
+    if (typeof data.coins === 'number') {
+      if (data.coins !== currentCoins) changed = true;
+      rawSetItem('task_game_coins', data.coins.toString());
+      rawSetItem('user_coins', data.coins.toString());
+      rawSetItem('task_game_coins_alt', data.coins.toString());
+    }
+    if (typeof data.stars === 'number') {
+      if (data.stars !== currentStars) changed = true;
+      rawSetItem('task_game_stars', data.stars.toString());
+      rawSetItem('user_stars', data.stars.toString());
+    }
+    if (typeof data.tickets === 'number') {
+      if (data.tickets !== currentTickets) changed = true;
+      rawSetItem('task_user_tickets', data.tickets.toString());
+      rawSetItem('user_tickets', data.tickets.toString());
+      rawSetItem('task_game_tickets', data.tickets.toString());
+    }
+    if (typeof data.diamonds === 'number') {
+      if (data.diamonds !== currentDiamonds) changed = true;
+      rawSetItem('task_user_diamonds', data.diamonds.toString());
+      rawSetItem('user_diamonds', data.diamonds.toString());
+    }
+    if (data.completedTasks && typeof data.completedTasks === 'object') {
+      rawSetItem('task_completed_tasks', JSON.stringify(data.completedTasks));
+      rawSetItem('task_game_completed_tasks', JSON.stringify(data.completedTasks));
+    }
+    if (data.unlockedTasks && typeof data.unlockedTasks === 'object') {
+      rawSetItem('task_unlocked_tasks', JSON.stringify(data.unlockedTasks));
+    }
+    if (data.commonCompletedIds && typeof data.commonCompletedIds === 'object') {
+      rawSetItem('tap_empire_common_completed_ids', JSON.stringify(data.commonCompletedIds));
+    }
+    if (Array.isArray(data.googleCompletedIds)) {
+      rawSetItem('tap_empire_google_completed_ids', JSON.stringify(data.googleCompletedIds));
+    }
+    if (data.starUnlockedCosts && typeof data.starUnlockedCosts === 'object') {
+      rawSetItem('tap_empire_star_unlocked_costs', JSON.stringify(data.starUnlockedCosts));
+    }
+    if (data.proGroupState && typeof data.proGroupState === 'object') {
+      rawSetItem('tap_empire_pro_group_state', JSON.stringify(data.proGroupState));
+    }
+    if (data.dailyStreak && typeof data.dailyStreak === 'object' && Object.keys(data.dailyStreak).length > 0) {
+      rawSetItem('task_game_daily_streak_v2', JSON.stringify(data.dailyStreak));
+    }
+    if (data.dailyProgression && typeof data.dailyProgression === 'object') {
+      rawSetItem('tap_empire_daily_progression', JSON.stringify(data.dailyProgression));
+    }
+    if (data.vipPlan && typeof data.vipPlan === 'object') {
+      rawSetItem('tap_empire_vip_plan', JSON.stringify(data.vipPlan));
+    }
+    if (data.categoryDailyCounts && typeof data.categoryDailyCounts === 'object') {
+      rawSetItem('tap_empire_category_daily_counts', JSON.stringify(data.categoryDailyCounts));
+    }
+    if (typeof data.ultraCredits === 'number') {
+      rawSetItem('wallet_ultra_task_credits', String(Math.max(0, data.ultraCredits)));
+      changed = true;
+    }
+    if (typeof data.ultraTotalCompleted === 'number') {
+      rawSetItem('wallet_ultra_total_completed', String(Math.max(0, data.ultraTotalCompleted)));
+    }
+    if (data.claimedWalletOffers && typeof data.claimedWalletOffers === 'object') {
+      rawSetItem('wallet_claimed_offers', JSON.stringify(data.claimedWalletOffers));
+      if (data.claimedWalletOffers.one_time_offer) {
+        rawSetItem('wallet_one_time_offer_claimed', 'true');
+      }
+      changed = true;
+    }
+    const resolvedTasksComp = typeof data.tasksCompleted === 'number' ? data.tasksCompleted : data.totalTasks;
+    if (typeof resolvedTasksComp === 'number') {
+      rawSetItem('completed_tasks_count', resolvedTasksComp.toString());
+      rawSetItem('task_game_total_tasks_completed', resolvedTasksComp.toString());
+    }
+    if (typeof data.eventTasks === 'number') {
+      rawSetItem('task_game_event_tasks_count', data.eventTasks.toString());
+      rawSetItem('task_game_event_tasks', data.eventTasks.toString());
+    }
+    if (typeof data.passLevel === 'number') {
+      rawSetItem('task_pass_level', String(Math.max(1, Math.min(500, data.passLevel))));
+    }
+    if (typeof data.passTotalCompleted === 'number') {
+      rawSetItem('task_pass_total_completed', String(Math.max(0, data.passTotalCompleted)));
+    }
+    if (typeof data.adsWatched === 'number') {
+      rawSetItem('ads_watched_count', data.adsWatched.toString());
+      rawSetItem('task_game_ads_watched_count', data.adsWatched.toString());
+    }
+    if (data.displayName && data.displayName !== 'Player') {
+      rawSetItem('player_username', data.displayName);
+    }
+    if (data.avatar) {
+      rawSetItem('player_avatar', data.avatar);
+    }
+    if (typeof data.vipPassActive === 'boolean') {
+      rawSetItem('task_vip_pass_active', data.vipPassActive ? 'true' : 'false');
+    }
+    if (data.shopUnlocks && typeof data.shopUnlocks === 'object') {
+      rawSetItem('task_game_shop_unlocks', JSON.stringify(data.shopUnlocks));
+      changed = true;
+    }
+    if (typeof data.passActivated === 'boolean') {
+      rawSetItem('season_6_pass_activated', data.passActivated ? 'true' : 'false');
+      changed = true;
+    }
+    if (data.passClaimed && typeof data.passClaimed === 'object') {
+      rawSetItem('season_battle_pass_claimed', JSON.stringify(data.passClaimed));
+      changed = true;
+    }
+    if (data.pendingPrizes && typeof data.pendingPrizes === 'object') {
+      rawSetItem('tap_empire_pending_prizes', JSON.stringify(data.pendingPrizes));
+      changed = true;
+    }
+    if (typeof data.dailyStreakCount === 'number') {
+      const syncedStreakStr = String(Math.max(0, data.dailyStreakCount));
+      rawSetItem('task_daily_streak_count', syncedStreakStr);
+      rawSetItem('task_game_streak_days', syncedStreakStr);
+      rawSetItem('user_streak_days', syncedStreakStr);
+    }
+    if (typeof data.dailyStreakLastDate === 'string' && data.dailyStreakLastDate) {
+      rawSetItem('task_daily_streak_last_date', data.dailyStreakLastDate);
+    }
+    if (typeof data.dailyStreakPenaltyDate === 'string' && data.dailyStreakPenaltyDate) {
+      rawSetItem('task_daily_streak_penalty_date', data.dailyStreakPenaltyDate);
+    }
+    if (data.referralMilestonesClaimed && typeof data.referralMilestonesClaimed === 'object') {
+      rawSetItem('referral_star_milestones_claimed', JSON.stringify(data.referralMilestonesClaimed));
+    }
+    if (typeof data.userReferralCode === 'string' && data.userReferralCode) {
+      rawSetItem('user_referral_code', data.userReferralCode);
+      rawSetItem('task_game_user_referral_code', data.userReferralCode);
+    }
+    if (Array.isArray(data.referralsList) && data.referralsList.length > 0) {
+      rawSetItem('task_game_referrals_list', JSON.stringify(data.referralsList));
+    }
+    if (typeof data.referralCount === 'number') {
+      rawSetItem('task_referral_count', String(Math.max(0, data.referralCount)));
+    }
+    if (Array.isArray(data.supportTickets) && data.supportTickets.length > 0) {
+      rawSetItem('user_support_tickets', JSON.stringify(data.supportTickets));
+    }
+    if (data.sunflowerState) {
+      rawSetItem('sunflower_game_state', typeof data.sunflowerState === 'string' ? data.sunflowerState : JSON.stringify(data.sunflowerState));
+    }
+    if (data.honeyBeeState) {
+      rawSetItem('honeybee_game_state', typeof data.honeyBeeState === 'string' ? data.honeyBeeState : JSON.stringify(data.honeyBeeState));
+    }
+    if (data.gameStats) {
+      if (typeof data.gameStats.gamesPlayed === 'number') rawSetItem('task_games_played', data.gameStats.gamesPlayed.toString());
+      if (typeof data.gameStats.coinsWonToday === 'number') rawSetItem('task_coins_won_today', data.gameStats.coinsWonToday.toString());
+      if (typeof data.gameStats.winStreak === 'number') rawSetItem('task_win_streak', data.gameStats.winStreak.toString());
+    }
+  } finally {
+    isInternalSync = false;
+  }
+
+  updateAllDomBalances();
+
+  window.dispatchEvent(new CustomEvent('streak:updated', { detail: { streak: parseInt(localStorage.getItem('task_daily_streak_count') || '0', 10) || 0 } }));
+  window.dispatchEvent(new CustomEvent('profile:cloudSynced', { detail: data }));
+
+  if (changed) {
+    try {
+      const ch = new BroadcastChannel(SYNC_CHANNEL_NAME);
+      ch.postMessage({ type: 'COINS_SYNCED', timestamp: Date.now() });
+      ch.close();
+    } catch (e) {}
+
+    const nextCoins = typeof data.coins === 'number' ? data.coins : currentCoins;
+    const nextStars = typeof data.stars === 'number' ? data.stars : currentStars;
+    const nextTickets = typeof data.tickets === 'number' ? data.tickets : currentTickets;
+    const nextDiamonds = typeof data.diamonds === 'number' ? data.diamonds : currentDiamonds;
+
+    if (forceBalanceEvents) {
+      window.dispatchEvent(new CustomEvent('balance:synced', {
+        detail: { coins: nextCoins, stars: nextStars, tickets: nextTickets, diamonds: nextDiamonds }
+      }));
+    }
+    window.dispatchEvent(new CustomEvent('balance:changed', {
+      detail: { coins: nextCoins, stars: nextStars, tickets: nextTickets, diamonds: nextDiamonds }
+    }));
+  }
+  return true;
+}
+
 /**
- * Fetch latest balances and stats directly from Firestore on page open
+ * Fetch latest balances and stats from Firestore + RTDB fallback on page open
  */
 async function initCloudBalances(targetUid = null) {
-  if (!db) return;
+  if (!db && !rtdb) return;
+  if (auth && !auth.currentUser) {
+    await ensureFirebaseAuthReady(2500);
+  }
   const uid = targetUid || getEffectivePlayerUid();
   if (!uid) return;
 
   try {
-    const userRef = doc(db, 'users', String(uid));
-    const snap = await getDoc(userRef);
-    if (snap.exists()) {
-      const data = snap.data() || {};
-      const localLastReset = parseInt(localStorage.getItem('task_game_last_reset_at') || '0', 10);
-      if (data.resetAt && Number(data.resetAt) > localLastReset) {
-        resetLocalPlayerSessionKeys();
-        rawSetItem('task_game_last_reset_at', String(data.resetAt));
-      }
-      isInternalSync = true;
+    let fsData = null;
+    let rtData = null;
+
+    if (db && !isFirestoreQuotaBlocked()) {
       try {
-        if (typeof data.coins === 'number') {
-          rawSetItem('task_game_coins', data.coins.toString());
-          rawSetItem('user_coins', data.coins.toString());
-        }
-        if (typeof data.stars === 'number') {
-          rawSetItem('task_game_stars', data.stars.toString());
-          rawSetItem('user_stars', data.stars.toString());
-        }
-        if (typeof data.tickets === 'number') {
-          rawSetItem('task_user_tickets', data.tickets.toString());
-          rawSetItem('user_tickets', data.tickets.toString());
-          rawSetItem('task_game_tickets', data.tickets.toString());
-        }
-        if (typeof data.diamonds === 'number') {
-          rawSetItem('task_user_diamonds', data.diamonds.toString());
-          rawSetItem('user_diamonds', data.diamonds.toString());
-        }
-        if (data.completedTasks && typeof data.completedTasks === 'object') {
-          rawSetItem('task_completed_tasks', JSON.stringify(data.completedTasks));
-          rawSetItem('task_game_completed_tasks', JSON.stringify(data.completedTasks));
-        }
-        if (data.unlockedTasks && typeof data.unlockedTasks === 'object') {
-          rawSetItem('task_unlocked_tasks', JSON.stringify(data.unlockedTasks));
-        }
-        if (data.proGroupState && typeof data.proGroupState === 'object') {
-          rawSetItem('tap_empire_pro_group_state', JSON.stringify(data.proGroupState));
-        }
-        if (data.dailyStreak && typeof data.dailyStreak === 'object' && Object.keys(data.dailyStreak).length > 0) {
-          rawSetItem('task_game_daily_streak_v2', JSON.stringify(data.dailyStreak));
-        }
-        if (data.dailyProgression && typeof data.dailyProgression === 'object') {
-          rawSetItem('tap_empire_daily_progression', JSON.stringify(data.dailyProgression));
-        }
-        if (data.vipPlan && typeof data.vipPlan === 'object') {
-          rawSetItem('tap_empire_vip_plan', JSON.stringify(data.vipPlan));
-        }
-        if (data.categoryDailyCounts && typeof data.categoryDailyCounts === 'object') {
-          rawSetItem('tap_empire_category_daily_counts', JSON.stringify(data.categoryDailyCounts));
-        }
-        if (typeof data.ultraCredits === 'number') {
-          rawSetItem('wallet_ultra_task_credits', String(Math.max(0, data.ultraCredits)));
-        }
-        if (typeof data.ultraTotalCompleted === 'number') {
-          rawSetItem('wallet_ultra_total_completed', String(Math.max(0, data.ultraTotalCompleted)));
-        }
-        if (data.claimedWalletOffers && typeof data.claimedWalletOffers === 'object') {
-          rawSetItem('wallet_claimed_offers', JSON.stringify(data.claimedWalletOffers));
-          if (data.claimedWalletOffers.one_time_offer) {
-            rawSetItem('wallet_one_time_offer_claimed', 'true');
-          }
-        }
-        if (typeof data.tasksCompleted === 'number') {
-          rawSetItem('completed_tasks_count', data.tasksCompleted.toString());
-          rawSetItem('task_game_total_tasks_completed', data.tasksCompleted.toString());
-        }
-        if (typeof data.adsWatched === 'number') {
-          rawSetItem('ads_watched_count', data.adsWatched.toString());
-          rawSetItem('task_game_ads_watched_count', data.adsWatched.toString());
-        }
-        if (data.displayName && data.displayName !== 'Player') {
-          rawSetItem('player_username', data.displayName);
-        }
-        if (data.avatar) {
-          rawSetItem('player_avatar', data.avatar);
-        }
-        if (data.sunflowerState) {
-          rawSetItem('sunflower_game_state', typeof data.sunflowerState === 'string' ? data.sunflowerState : JSON.stringify(data.sunflowerState));
-        }
-        if (data.honeyBeeState) {
-          rawSetItem('honeybee_game_state', typeof data.honeyBeeState === 'string' ? data.honeyBeeState : JSON.stringify(data.honeyBeeState));
-        }
-        if (data.gameStats) {
-          if (typeof data.gameStats.gamesPlayed === 'number') rawSetItem('task_games_played', data.gameStats.gamesPlayed.toString());
-          if (typeof data.gameStats.coinsWonToday === 'number') rawSetItem('task_coins_won_today', data.gameStats.coinsWonToday.toString());
-          if (typeof data.gameStats.winStreak === 'number') rawSetItem('task_win_streak', data.gameStats.winStreak.toString());
-        }
-      } finally {
-        isInternalSync = false;
+        const snap = await getDoc(doc(db, 'users', String(uid)));
+        if (snap.exists()) fsData = snap.data() || null;
+      } catch (fsErr) {
+        markFirestoreQuotaBlocked(fsErr);
       }
+    }
 
-      updateAllDomBalances();
-
-      const syncedCoins = typeof data.coins === 'number' ? data.coins : parseInt(localStorage.getItem('task_game_coins') || '0', 10);
-      const syncedStars = typeof data.stars === 'number' ? data.stars : parseInt(localStorage.getItem('task_game_stars') || '0', 10);
-
-      window.dispatchEvent(new CustomEvent('balance:synced', {
-        detail: { coins: syncedCoins, stars: syncedStars }
-      }));
-      window.dispatchEvent(new CustomEvent('balance:changed', {
-        detail: { coins: syncedCoins, stars: syncedStars }
-      }));
-
-      // Update last active time for existing player
+    if (rtdb) {
       try {
-        setDoc(userRef, { lastActive: Date.now(), updatedAt: Date.now() }, { merge: true }).catch(() => {});
-      } catch (e) {}
+        const rSnap = await get(ref(rtdb, 'users/' + String(uid)));
+        if (rSnap.exists()) rtData = rSnap.val() || null;
+      } catch (rtErr) {}
+    }
+
+    let bestData = fsData;
+    if (!bestData && rtData) {
+      bestData = rtData;
+    } else if (fsData && rtData && Number(rtData.updatedAt || 0) > Number(fsData.updatedAt || 0)) {
+      bestData = { ...fsData, ...rtData };
+    }
+
+    if (bestData) {
+      applyIncomingUserCloudData(bestData, { forceBalanceEvents: true });
+      if (db && !isFirestoreQuotaBlocked()) {
+        try {
+          setDoc(doc(db, 'users', String(uid)), { lastActive: Date.now() }, { merge: true }).catch(() => {});
+        } catch (e) {}
+      }
     } else {
-      // Initialize profile in Firestore
       await saveCurrentProfileToFirestore();
     }
   } catch (err) {
@@ -964,11 +1339,13 @@ async function initCloudBalances(targetUid = null) {
 }
 
 let userDocUnsubscribe = null;
+let userRtdbUnsubscribe = null;
 /**
- * Real-time listener for current user's profile in Firestore
+ * Dual Real-time listener for current user's profile in BOTH Firestore AND RTDB
  */
+const _cloudProfileCreatedUids = new Set();
 function startRealtimeUserSync(targetUid = null) {
-  if (!db) return null;
+  if (!db && !rtdb) return null;
   const uid = targetUid || getEffectivePlayerUid();
   if (!uid) return null;
 
@@ -976,135 +1353,42 @@ function startRealtimeUserSync(targetUid = null) {
     try { userDocUnsubscribe(); } catch (e) {}
     userDocUnsubscribe = null;
   }
-
-  try {
-    const userRef = doc(db, 'users', String(uid));
-    userDocUnsubscribe = onSnapshot(userRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const cloudData = docSnap.data() || {};
-        const localLastReset = parseInt(localStorage.getItem('task_game_last_reset_at') || '0', 10);
-        if (cloudData.resetAt && Number(cloudData.resetAt) > localLastReset) {
-          resetLocalPlayerSessionKeys();
-          rawSetItem('task_game_last_reset_at', String(cloudData.resetAt));
-        }
-        let changed = false;
-
-        const currentCoins = parseInt(localStorage.getItem('task_game_coins') || '0', 10);
-        const currentStars = parseInt(localStorage.getItem('task_game_stars') || '0', 10);
-
-        isInternalSync = true;
-        try {
-          if (typeof cloudData.coins === 'number' && cloudData.coins !== currentCoins) {
-            rawSetItem('task_game_coins', cloudData.coins.toString());
-            rawSetItem('user_coins', cloudData.coins.toString());
-            changed = true;
-          }
-
-          if (typeof cloudData.stars === 'number' && cloudData.stars !== currentStars) {
-            rawSetItem('task_game_stars', cloudData.stars.toString());
-            rawSetItem('user_stars', cloudData.stars.toString());
-            changed = true;
-          }
-
-          const currentTickets = parseInt(localStorage.getItem('task_user_tickets') || '0', 10);
-          if (typeof cloudData.tickets === 'number' && cloudData.tickets !== currentTickets) {
-            rawSetItem('task_user_tickets', cloudData.tickets.toString());
-            rawSetItem('user_tickets', cloudData.tickets.toString());
-            rawSetItem('task_game_tickets', cloudData.tickets.toString());
-            changed = true;
-          }
-
-          const currentDiamonds = parseInt(localStorage.getItem('task_user_diamonds') || '0', 10);
-          if (typeof cloudData.diamonds === 'number' && cloudData.diamonds !== currentDiamonds) {
-            rawSetItem('task_user_diamonds', cloudData.diamonds.toString());
-            rawSetItem('user_diamonds', cloudData.diamonds.toString());
-            changed = true;
-          }
-
-          if (cloudData.completedTasks && typeof cloudData.completedTasks === 'object') {
-            rawSetItem('task_completed_tasks', JSON.stringify(cloudData.completedTasks));
-            rawSetItem('task_game_completed_tasks', JSON.stringify(cloudData.completedTasks));
-          }
-          if (cloudData.unlockedTasks && typeof cloudData.unlockedTasks === 'object') {
-            rawSetItem('task_unlocked_tasks', JSON.stringify(cloudData.unlockedTasks));
-          }
-          if (cloudData.proGroupState && typeof cloudData.proGroupState === 'object') {
-            rawSetItem('tap_empire_pro_group_state', JSON.stringify(cloudData.proGroupState));
-          }
-          if (cloudData.dailyStreak && typeof cloudData.dailyStreak === 'object' && Object.keys(cloudData.dailyStreak).length > 0) {
-            rawSetItem('task_game_daily_streak_v2', JSON.stringify(cloudData.dailyStreak));
-          }
-          if (cloudData.dailyProgression && typeof cloudData.dailyProgression === 'object') {
-            rawSetItem('tap_empire_daily_progression', JSON.stringify(cloudData.dailyProgression));
-          }
-          if (cloudData.vipPlan && typeof cloudData.vipPlan === 'object') {
-            rawSetItem('tap_empire_vip_plan', JSON.stringify(cloudData.vipPlan));
-          }
-          if (cloudData.categoryDailyCounts && typeof cloudData.categoryDailyCounts === 'object') {
-            rawSetItem('tap_empire_category_daily_counts', JSON.stringify(cloudData.categoryDailyCounts));
-          }
-          if (typeof cloudData.ultraCredits === 'number') {
-            rawSetItem('wallet_ultra_task_credits', String(Math.max(0, cloudData.ultraCredits)));
-            changed = true;
-          }
-          if (typeof cloudData.ultraTotalCompleted === 'number') {
-            rawSetItem('wallet_ultra_total_completed', String(Math.max(0, cloudData.ultraTotalCompleted)));
-          }
-          if (cloudData.claimedWalletOffers && typeof cloudData.claimedWalletOffers === 'object') {
-            rawSetItem('wallet_claimed_offers', JSON.stringify(cloudData.claimedWalletOffers));
-            if (cloudData.claimedWalletOffers.one_time_offer) {
-              rawSetItem('wallet_one_time_offer_claimed', 'true');
-            }
-            changed = true;
-          }
-
-          if (typeof cloudData.tasksCompleted === 'number') {
-            rawSetItem('completed_tasks_count', cloudData.tasksCompleted.toString());
-            rawSetItem('task_game_total_tasks_completed', cloudData.tasksCompleted.toString());
-          }
-
-          if (typeof cloudData.adsWatched === 'number') {
-            rawSetItem('ads_watched_count', cloudData.adsWatched.toString());
-            rawSetItem('task_game_ads_watched_count', cloudData.adsWatched.toString());
-          }
-
-          if (cloudData.displayName && cloudData.displayName !== 'Player') {
-            rawSetItem('player_username', cloudData.displayName);
-          }
-
-          if (cloudData.avatar) {
-            rawSetItem('player_avatar', cloudData.avatar);
-          }
-        } finally {
-          isInternalSync = false;
-        }
-
-        updateAllDomBalances();
-
-        if (changed) {
-          try {
-            const ch = new BroadcastChannel(SYNC_CHANNEL_NAME);
-            ch.postMessage({ type: 'COINS_SYNCED', timestamp: Date.now() });
-          } catch (e) {}
-
-          const nextCoins = typeof cloudData.coins === 'number' ? cloudData.coins : currentCoins;
-          const nextStars = typeof cloudData.stars === 'number' ? cloudData.stars : currentStars;
-
-          window.dispatchEvent(new CustomEvent('balance:changed', {
-            detail: { coins: nextCoins, stars: nextStars }
-          }));
-        }
-      } else {
-        saveCurrentProfileToFirestore();
-      }
-    }, (err) => {
-      console.log("[Firebase] User real-time sync running in offline cache mode.");
-    });
-
-    return userDocUnsubscribe;
-  } catch (e) {
-    return null;
+  if (userRtdbUnsubscribe) {
+    try { userRtdbUnsubscribe(); } catch (e) {}
+    userRtdbUnsubscribe = null;
   }
+
+  if (db && !isFirestoreQuotaBlocked()) {
+    try {
+      const userRef = doc(db, 'users', String(uid));
+      userDocUnsubscribe = onSnapshot(userRef, (docSnap) => {
+        if (docSnap.exists()) {
+          applyIncomingUserCloudData(docSnap.data() || {});
+        } else if (!_cloudProfileCreatedUids.has(String(uid))) {
+          _cloudProfileCreatedUids.add(String(uid));
+          saveCurrentProfileToFirestore();
+        }
+      }, (err) => {
+        markFirestoreQuotaBlocked(err);
+        console.log("[Firebase] User Firestore sync running in fallback mode.");
+      });
+    } catch (e) {}
+  }
+
+  if (rtdb) {
+    try {
+      userRtdbUnsubscribe = onValue(ref(rtdb, 'users/' + String(uid)), (snap) => {
+        if (snap.exists()) {
+          applyIncomingUserCloudData(snap.val() || {});
+        }
+      }, () => {});
+    } catch (e) {}
+  }
+
+  return () => {
+    if (typeof userDocUnsubscribe === 'function') { try { userDocUnsubscribe(); } catch (e) {} }
+    if (typeof userRtdbUnsubscribe === 'function') { try { userRtdbUnsubscribe(); } catch (e) {} }
+  };
 }
 
 // Debounced auto-sync when local balances change
@@ -1119,16 +1403,40 @@ function scheduleCloudBalanceSync(delay = 350) {
 // Global FirebaseSync currency management engine for all games & pages
 const firebaseSync = {
   get db() { return db; },
+  get rtdb() { return rtdb; },
   get auth() { return auth; },
   get userId() { return getEffectivePlayerUid(); },
   get database() {
     return {
       ref: (path) => ({
         set: async (data) => {
-          if (!db) return;
           const uid = getEffectivePlayerUid();
-          const docRef = doc(db, 'players_data', `${uid}_${String(path).replace(/\//g, '_')}`);
-          return setDoc(docRef, { data, updatedAt: Date.now() }, { merge: true });
+          const authUid = (auth && auth.currentUser && auth.currentUser.uid) ? auth.currentUser.uid : uid;
+          const cleanSub = String(path || 'state').replace(/^\/+|\/+$/g, '');
+          const cleanFsId = `${uid}_${cleanSub.replace(/\//g, '_')}`;
+          let wrote = false;
+          if (db && !isFirestoreQuotaBlocked()) {
+            try {
+              await setDoc(doc(db, 'players_data', cleanFsId), {
+                data,
+                userId: uid,
+                ownerAuthUid: authUid,
+                updatedAt: Date.now()
+              }, { merge: true });
+              wrote = true;
+            } catch (e) { markFirestoreQuotaBlocked(e); }
+          }
+          if (rtdb) {
+            try {
+              await set(ref(rtdb, `players_data/${uid}/${cleanSub}`), {
+                data,
+                ownerAuthUid: authUid,
+                updatedAt: Date.now()
+              });
+              wrote = true;
+            } catch (e) {}
+          }
+          return wrote;
         }
       })
     };
@@ -2182,52 +2490,148 @@ try {
 // FIRESTORE TASKS, REFERRALS & LEADERBOARD CLOUD METHODS
 // =============================================================================
 
+let _lastLocalTaskSaveAt = parseInt(localStorage.getItem('task_game_tasks_updated_at') || '0', 10) || 0;
+let _lastSyncedTasksHash = '';
+const ADMIN_LOCK_CHANNEL_NAME = 'admin_lock_channel';
+const ADMIN_LOCAL_LOCK_KEY = 'tap_empire_admin_active_lock';
+const ADMIN_LOCK_TTL_MS = 120000;
+
+function extractTasksArrayFromCloudPayload(data) {
+  if (!data) return null;
+  if (Array.isArray(data)) return data.filter(t => t && typeof t === 'object' && !t.isDemo && !/^(comm_mission|coin_mission|star_mission|pro_mission|ultra_mission|quiz_task)_/.test(String(t.id || '')));
+  let list = null;
+  // Prefer live structured `data.tasks` (array or RTDB sparse map after manual console edits/deletes) FIRST
+  if (data.tasks !== undefined && data.tasks !== null) {
+    if (Array.isArray(data.tasks)) {
+      list = data.tasks;
+    } else if (typeof data.tasks === 'object') {
+      const keys = Object.keys(data.tasks).sort((a, b) => {
+        const na = Number(a), nb = Number(b);
+        return (!isNaN(na) && !isNaN(nb)) ? na - nb : a.localeCompare(b);
+      });
+      list = keys.map(k => data.tasks[k]);
+    }
+  }
+  // Fallback to legacy `tasksJson` string only if structured `tasks` field is absent
+  if (!list && typeof data.tasksJson === 'string' && data.tasksJson.trim()) {
+    try {
+      const parsed = JSON.parse(data.tasksJson);
+      if (Array.isArray(parsed)) list = parsed;
+      else if (parsed && typeof parsed === 'object') list = Object.values(parsed);
+    } catch (e) {}
+  }
+  if (!list && typeof data === 'object' && !('updatedAt' in data) && !('code' in data) && !('tasksJson' in data) && !('tasks' in data)) {
+    const vals = Object.values(data).filter(v => v && typeof v === 'object' && (v.id || v.title || v.category));
+    if (vals.length > 0) list = vals;
+  }
+  if (!Array.isArray(list)) return null;
+  const legacyDemoRe = /^(comm_mission|coin_mission|star_mission|pro_mission|ultra_mission|quiz_task)_/;
+  return list.filter(t => t && typeof t === 'object' && !t.isDemo && !legacyDemoRe.test(String(t.id || '')));
+}
+
+function projectCompactAdminUser(uid, raw) {
+  const u = (raw && typeof raw === 'object') ? raw : {};
+  return {
+    id: u.id || u.uid || uid,
+    uid: u.uid || u.id || uid,
+    displayName: u.displayName || u.name || 'Player',
+    name: u.displayName || u.name || 'Player',
+    email: u.email || '',
+    username: u.username || '',
+    avatar: u.avatar || 'avatar-1.png',
+    role: u.role === 'vip' ? 'vip' : 'player',
+    level: u.level || 'LVL 1 • NOVICE',
+    coins: typeof u.coins === 'number' ? u.coins : (parseInt(u.coins || '0', 10) || 0),
+    stars: typeof u.stars === 'number' ? u.stars : (parseInt(u.stars || '0', 10) || 0),
+    tickets: typeof u.tickets === 'number' ? u.tickets : (parseInt(u.tickets || '0', 10) || 0),
+    diamonds: typeof u.diamonds === 'number' ? u.diamonds : (parseInt(u.diamonds || '0', 10) || 0),
+    passLevel: typeof u.passLevel === 'number' ? u.passLevel : (parseInt(u.passLevel || '0', 10) || 0),
+    eventTasks: parseInt(u.eventTasks || '0', 10) || 0,
+    tasksCompleted: parseInt(u.tasksCompleted ?? u.totalTasks ?? '0', 10) || 0,
+    totalTasks: parseInt(u.tasksCompleted ?? u.totalTasks ?? '0', 10) || 0,
+    adsWatched: parseInt(u.adsWatched || '0', 10) || 0,
+    status: u.status || 'active',
+    createdAt: u.createdAt || 0,
+    updatedAt: u.updatedAt || u.lastActive || 0,
+    lastActive: u.lastActive || u.updatedAt || 0
+  };
+}
+
+function cacheCompactUsersSummary(usersList) {
+  try {
+    const compact = (Array.isArray(usersList) ? usersList : []).slice(0, 150).map(u => projectCompactAdminUser(u.id, u));
+    localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(compact));
+  } catch (e) {
+    try { localStorage.removeItem(USERS_STORAGE_KEY); } catch (_) {}
+  }
+}
+
 /**
- * Save tasks to Firestore cloud (Dual-channel: referral_codes/GLOBAL_TASKS + system/tasks_config)
+ * Save tasks to Firestore cloud & RTDB cleanly (Real-Time Sync to Home, Tasks & Admin)
  */
 async function saveTasksToCloud(tasks) {
-  if (!db) return false;
   const now = Date.now();
+  const cleanTasks = Array.isArray(tasks) ? tasks : [];
+  const tasksJson = JSON.stringify(cleanTasks);
+  _lastLocalTaskSaveAt = now;
+  _lastSyncedTasksHash = tasksJson;
   let saved = false;
 
-  // Channel 1: High-reliability global document (referral_codes/GLOBAL_TASKS - 200 OK across rulesets)
+  // Persist locally & broadcast immediately so Home/Tasks reflect edits with 0ms latency
+  localStorage.setItem(TASKS_STORAGE_KEY, tasksJson);
+  localStorage.setItem('admin_tasks', tasksJson);
+  localStorage.setItem('task_game_tasks_updated_at', String(now));
+  localStorage.setItem(SYNC_FLAG_KEY, String(now));
   try {
-    const globalTasksRef = doc(db, 'referral_codes', 'GLOBAL_TASKS');
-    const uid = (auth && auth.currentUser) ? auth.currentUser.uid : 'admin_mission_control';
-    await setDoc(globalTasksRef, {
-      code: 'GLOBAL_TASKS',
-      userId: uid,
-      rewardCoins: 0,
-      tasks: tasks,
-      tasksJson: JSON.stringify(tasks),
-      updatedAt: now
-    }, { merge: true });
-    console.log("[Firebase] Tasks saved to cloud GLOBAL_TASKS successfully!");
-    saved = true;
-  } catch (err) {
-    console.warn("[Firebase] GLOBAL_TASKS save note:", err.message);
-  }
-
-  // Channel 2: System configuration document
+    const ch = new BroadcastChannel(SYNC_CHANNEL_NAME);
+    ch.postMessage({ type: 'TASKS_UPDATED', tasks: cleanTasks, timestamp: now });
+    ch.close();
+  } catch (e) {}
   try {
-    const tasksRef = doc(db, 'system', 'tasks_config');
-    await setDoc(tasksRef, {
-      tasks: tasks,
-      tasksJson: JSON.stringify(tasks),
-      updatedAt: now
-    }, { merge: true });
-    saved = true;
-  } catch (err) {
-    // Expected in client if system collection is restricted
-  }
+    window.dispatchEvent(new CustomEvent('tasks:changed', { detail: cleanTasks }));
+  } catch (e) {}
 
-  // Update local storage and broadcast immediately
-  if (Array.isArray(tasks)) {
-    localStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(tasks));
-    localStorage.setItem(SYNC_FLAG_KEY, now.toString());
+  if (db && !isFirestoreQuotaBlocked()) {
     try {
-      const ch = new BroadcastChannel(SYNC_CHANNEL_NAME);
-      ch.postMessage({ type: 'TASKS_SYNCED', timestamp: now });
+      const globalTasksRef = doc(db, 'referral_codes', 'GLOBAL_TASKS');
+      const uid = (auth && auth.currentUser) ? auth.currentUser.uid : 'admin_mission_control';
+      await setDoc(globalTasksRef, {
+        code: 'GLOBAL_TASKS',
+        userId: uid,
+        rewardCoins: 0,
+        tasks: cleanTasks,
+        tasksJson,
+        updatedAt: now
+      });
+      saved = true;
+    } catch (err) {
+      markFirestoreQuotaBlocked(err);
+      console.warn("[Firebase] GLOBAL_TASKS save note:", err.message);
+    }
+
+    if (!isFirestoreQuotaBlocked()) {
+      try {
+        const tasksRef = doc(db, 'system', 'tasks_config');
+        await setDoc(tasksRef, {
+          tasks: cleanTasks,
+          tasksJson,
+          updatedAt: now
+        });
+        saved = true;
+      } catch (err) {
+        markFirestoreQuotaBlocked(err);
+      }
+    }
+  }
+
+  if (rtdb) {
+    try {
+      await set(ref(rtdb, 'system/tasks_config'), {
+        tasks: cleanTasks,
+        tasksJson,
+        updatedAt: now
+      });
+      saved = true;
     } catch (e) {}
   }
 
@@ -2235,119 +2639,374 @@ async function saveTasksToCloud(tasks) {
 }
 
 /**
- * Real-time listener for tasks in Firestore (Listens to both GLOBAL_TASKS and tasks_config)
+ * Real-time listener for tasks in Firestore & RTDB (syncs edits/deletes live to Home, Tasks & Admin Editor)
  */
 function listenToCloudTasks(onUpdateCallback) {
-  if (!db) return null;
   let unsubGlobal = null;
   let unsubSys = null;
+  let unsubRtdb = null;
 
   const handleIncomingTasks = (data) => {
-    if (!data) return;
-    let list = null;
-    if (data.tasksJson && typeof data.tasksJson === 'string') {
-      try { list = JSON.parse(data.tasksJson); } catch (e) {}
-    }
-    if (!list && Array.isArray(data.tasks)) {
-      list = data.tasks;
-    }
-    if (Array.isArray(list)) {
-      const legacyDemoRe = /^(comm_mission|coin_mission|star_mission|pro_mission|ultra_mission|quiz_task)_/;
-      list = list.filter(t => t && !t.isDemo && !legacyDemoRe.test(String(t.id || '')));
-      localStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(list));
-      localStorage.setItem('admin_tasks', JSON.stringify(list));
-      localStorage.setItem(SYNC_FLAG_KEY, Date.now().toString());
-      try {
-        const ch = new BroadcastChannel(SYNC_CHANNEL_NAME);
-        ch.postMessage({ type: 'TASKS_SYNCED', timestamp: Date.now() });
-      } catch (e) {}
+    const list = extractTasksArrayFromCloudPayload(data);
+    if (!Array.isArray(list)) return;
 
-      if (typeof onUpdateCallback === 'function') {
-        onUpdateCallback(list);
-      }
-      if (typeof window.renderTasks === 'function') {
-        window.renderTasks();
-      }
-      if (typeof window.renderAllHomeTasks === 'function') {
-        window.renderAllHomeTasks();
-      }
-      if (typeof window.renderAdminTasks === 'function') {
-        window.renderAdminTasks();
-      }
-      if (typeof window.renderTasksTable === 'function') {
-        window.renderTasksTable();
-      }
+    const incomingTs = Number((data && data.updatedAt) || 0) || 0;
+    if (incomingTs > 0 && _lastLocalTaskSaveAt > incomingTs + 1000) {
+      return; // Ignore older cached echo from slower Firebase channel
+    }
+
+    const hash = JSON.stringify(list);
+    const localExisting = localStorage.getItem(TASKS_STORAGE_KEY) || '';
+    if (hash === _lastSyncedTasksHash && hash === localExisting) {
+      return;
+    }
+
+    _lastSyncedTasksHash = hash;
+    const tsNow = Math.max(Date.now(), incomingTs);
+    localStorage.setItem(TASKS_STORAGE_KEY, hash);
+    localStorage.setItem('admin_tasks', hash);
+    localStorage.setItem('task_game_tasks_updated_at', String(tsNow));
+    localStorage.setItem(SYNC_FLAG_KEY, String(tsNow));
+    try {
+      const ch = new BroadcastChannel(SYNC_CHANNEL_NAME);
+      ch.postMessage({ type: 'TASKS_SYNCED', timestamp: tsNow });
+      ch.close();
+    } catch (e) {}
+    try {
+      window.dispatchEvent(new CustomEvent('tasks:changed', { detail: list }));
+    } catch (e) {}
+
+    if (typeof onUpdateCallback === 'function') {
+      try { onUpdateCallback(list); } catch (e) {}
+    }
+    if (typeof window.onCloudTasksUpdated === 'function') {
+      try { window.onCloudTasksUpdated(list); } catch (e) {}
+    }
+    if (typeof window.renderTasks === 'function') {
+      try { window.renderTasks(); } catch (e) {}
+    }
+    if (window.TapEngine && typeof window.TapEngine.refreshAllTaskViews === 'function') {
+      try { window.TapEngine.refreshAllTaskViews(); } catch (e) {}
+    }
+    if (typeof window.renderAllHomeTasks === 'function') {
+      try { window.renderAllHomeTasks(); } catch (e) {}
+    }
+    if (typeof window.renderAdminTasks === 'function') {
+      try { window.renderAdminTasks(); } catch (e) {}
+    }
+    if (typeof window.renderTasksTable === 'function') {
+      try { window.renderTasksTable(); } catch (e) {}
     }
   };
 
-  try {
-    const globalRef = doc(db, 'referral_codes', 'GLOBAL_TASKS');
-    unsubGlobal = onSnapshot(globalRef, (snapshot) => {
-      if (snapshot.exists()) {
-        handleIncomingTasks(snapshot.data());
-      }
-    }, (err) => {
-      console.log("[Firebase] Global tasks channel listening note:", err.message);
-    });
-  } catch (e) {}
+  if (db && !isFirestoreQuotaBlocked()) {
+    try {
+      const globalRef = doc(db, 'referral_codes', 'GLOBAL_TASKS');
+      unsubGlobal = onSnapshot(globalRef, (snapshot) => {
+        if (snapshot.exists()) {
+          handleIncomingTasks(snapshot.data());
+        }
+      }, (err) => {
+        markFirestoreQuotaBlocked(err);
+      });
+    } catch (e) {}
 
-  try {
-    const sysRef = doc(db, 'system', 'tasks_config');
-    unsubSys = onSnapshot(sysRef, (snapshot) => {
-      if (snapshot.exists()) {
-        handleIncomingTasks(snapshot.data());
-      }
-    }, () => {});
-  } catch (e) {}
+    try {
+      const sysRef = doc(db, 'system', 'tasks_config');
+      unsubSys = onSnapshot(sysRef, (snapshot) => {
+        if (snapshot.exists()) {
+          handleIncomingTasks(snapshot.data());
+        }
+      }, (err) => { markFirestoreQuotaBlocked(err); });
+    } catch (e) {}
+  }
+
+  if (rtdb) {
+    try {
+      unsubRtdb = onValue(ref(rtdb, 'system/tasks_config'), (snap) => {
+        if (snap.exists()) handleIncomingTasks(snap.val());
+      }, () => {});
+    } catch (e) {}
+  }
 
   return () => {
     if (typeof unsubGlobal === 'function') unsubGlobal();
     if (typeof unsubSys === 'function') unsubSys();
+    if (typeof unsubRtdb === 'function') unsubRtdb();
   };
 }
 
 /**
- * Real-time listener for users in Firestore
+ * Scalable Real-Time + Cursor-Paginated Users Loader (Handles 10,000+ players cleanly)
  */
 function listenToCloudUsers(onUpdateCallback) {
-  if (!db) return null;
-  try {
-    const usersCol = collection(db, 'users');
-    const unsubscribe = onSnapshot(usersCol, (snapshot) => {
-      const usersList = [];
-      snapshot.forEach((docSnap) => {
-        usersList.push({ id: docSnap.id, ...docSnap.data() });
-      });
-      if (usersList.length > 0) {
-        localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(usersList));
-      }
+  let unsubFs = null;
+  let cancelled = false;
+  const usersMap = new Map();
+  let flushTimer = null;
+
+  const scheduleEmit = () => {
+    clearTimeout(flushTimer);
+    flushTimer = setTimeout(() => {
+      if (cancelled) return;
+      const merged = Array.from(usersMap.values());
+      cacheCompactUsersSummary(merged);
       if (typeof onUpdateCallback === 'function') {
-        onUpdateCallback(usersList);
+        try { onUpdateCallback(merged); } catch (e) {}
       }
-    }, (err) => {
-      console.log("[Firebase] Firestore users listening in offline mode.");
+    }, 80);
+  };
+
+  const ingestDocs = (docs) => {
+    docs.forEach((docSnap) => {
+      const data = typeof docSnap.data === 'function' ? docSnap.data() : docSnap;
+      const uid = docSnap.id || (data && (data.uid || data.id));
+      if (uid) usersMap.set(String(uid), projectCompactAdminUser(String(uid), data));
     });
-    return unsubscribe;
-  } catch (e) {
-    return null;
+  };
+
+  if (db && !isFirestoreQuotaBlocked()) {
+    // 1. Live stream of most recently active 500 players (fast real-time updates)
+    try {
+      const recentQ = query(collection(db, 'users'), orderBy('updatedAt', 'desc'), limit(500));
+      unsubFs = onSnapshot(recentQ, (snapshot) => {
+        ingestDocs(snapshot.docs);
+        scheduleEmit();
+      }, (err) => {
+        // Fallback if some records lack updatedAt or index is warming
+        if (!isFirestoreQuotaBlocked()) {
+          try {
+            unsubFs = onSnapshot(query(collection(db, 'users'), limit(500)), (snap) => {
+              ingestDocs(snap.docs);
+              scheduleEmit();
+            }, (e2) => markFirestoreQuotaBlocked(e2));
+          } catch (e3) {}
+        }
+      });
+    } catch (e) {}
+
+    // 2. Non-blocking cursor pagination to load 10,000+ players in chunks of 2,000
+    (async () => {
+      try {
+        let lastDoc = null;
+        let fetchedPages = 0;
+        while (!cancelled && !isFirestoreQuotaBlocked() && fetchedPages < 25) {
+          const pageQ = lastDoc
+            ? query(collection(db, 'users'), startAfter(lastDoc), limit(2000))
+            : query(collection(db, 'users'), limit(2000));
+          const snap = await getDocs(pageQ);
+          if (cancelled || snap.empty) break;
+          ingestDocs(snap.docs);
+          scheduleEmit();
+          lastDoc = snap.docs[snap.docs.length - 1];
+          fetchedPages++;
+          if (snap.docs.length < 2000) break;
+          await new Promise(r => setTimeout(r, 30));
+        }
+      } catch (err) {
+        markFirestoreQuotaBlocked(err);
+      }
+    })();
   }
+
+  // Fallback / initial RTDB snapshot load once without attaching 10k-node real-time flood
+  if (rtdb) {
+    get(ref(rtdb, 'users')).then((snap) => {
+      if (!cancelled && snap.exists()) {
+        const obj = snap.val() || {};
+        Object.entries(obj).forEach(([k, v]) => {
+          if (!usersMap.has(String(k))) {
+            usersMap.set(String(k), projectCompactAdminUser(String(k), v));
+          }
+        });
+        scheduleEmit();
+      }
+    }).catch(() => {});
+  }
+
+  return () => {
+    cancelled = true;
+    clearTimeout(flushTimer);
+    if (typeof unsubFs === 'function') unsubFs();
+  };
 }
 
 /**
- * Save user balances to Firestore (compatibility wrapper)
+ * Single-Person Admin Exclusive Access Lock (Firestore + RTDB + Local)
+ * Stores `holderAuthUid` so Firestore & RTDB security rules enforce 1-person Admin access server-side.
+ */
+async function acquireSingleAdminLock(deviceId, sessionToken) {
+  const now = Date.now();
+  const dev = String(deviceId || '').trim();
+  const tok = String(sessionToken || '').trim();
+  if (!dev || !tok) return { ok: false, error: 'Missing admin session identifiers.' };
+
+  await ensureFirebaseAuthReady(2500);
+  const authUid = (auth && auth.currentUser && auth.currentUser.uid) ? auth.currentUser.uid : '';
+
+  const validateLock = (existing) => {
+    if (!existing || !existing.active) return true;
+    const age = now - Number(existing.updatedAt || 0);
+    if (age > ADMIN_LOCK_TTL_MS) return true;
+    return String(existing.holderDeviceId || '') === dev
+      || String(existing.sessionToken || '') === tok
+      || (authUid && String(existing.holderAuthUid || '') === authUid);
+  };
+
+  // Local lock check first
+  try {
+    const rawLocal = localStorage.getItem(ADMIN_LOCAL_LOCK_KEY);
+    if (rawLocal) {
+      const localLock = JSON.parse(rawLocal);
+      if (!validateLock(localLock)) {
+        return { ok: false, blockedByOther: true, error: '🚫 Admin Access Restricted to 1 Person! Another device holds the active Admin lock.' };
+      }
+    }
+  } catch (e) {}
+
+  const lockPayload = {
+    active: true,
+    adminUser: '400@kp',
+    holderDeviceId: dev,
+    holderAuthUid: authUid,
+    sessionToken: tok,
+    updatedAt: now
+  };
+
+  // Cloud Firestore lock check & acquire
+  if (db && !isFirestoreQuotaBlocked()) {
+    try {
+      const lockRef = doc(db, 'system', 'admin_lock');
+      const snap = await getDoc(lockRef);
+      if (snap.exists() && !validateLock(snap.data())) {
+        return { ok: false, blockedByOther: true, error: '🚫 Admin Access Restricted to 1 Person! Another administrator session is currently active.' };
+      }
+      await setDoc(lockRef, lockPayload);
+    } catch (err) {
+      markFirestoreQuotaBlocked(err);
+    }
+  }
+
+  if (rtdb) {
+    try {
+      const rtSnap = await get(ref(rtdb, 'system/admin_lock'));
+      if (rtSnap.exists() && !validateLock(rtSnap.val())) {
+        return { ok: false, blockedByOther: true, error: '🚫 Admin Access Restricted to 1 Person! Another administrator session is currently active.' };
+      }
+      await set(ref(rtdb, 'system/admin_lock'), lockPayload);
+    } catch (e) {}
+  }
+
+  try { localStorage.setItem(ADMIN_LOCAL_LOCK_KEY, JSON.stringify(lockPayload)); } catch (e) {}
+  try {
+    const ch = new BroadcastChannel(ADMIN_LOCK_CHANNEL_NAME);
+    ch.postMessage({ type: 'ADMIN_LOCK_UPDATED', lock: lockPayload });
+    ch.close();
+  } catch (e) {}
+  return { ok: true, lock: lockPayload };
+}
+
+async function heartbeatSingleAdminLock(deviceId, sessionToken) {
+  const now = Date.now();
+  const authUid = (auth && auth.currentUser && auth.currentUser.uid) ? auth.currentUser.uid : '';
+  const payload = {
+    active: true,
+    adminUser: '400@kp',
+    holderDeviceId: String(deviceId || ''),
+    holderAuthUid: authUid,
+    sessionToken: String(sessionToken || ''),
+    updatedAt: now
+  };
+  try { localStorage.setItem(ADMIN_LOCAL_LOCK_KEY, JSON.stringify(payload)); } catch (e) {}
+  if (db && !isFirestoreQuotaBlocked()) {
+    setDoc(doc(db, 'system', 'admin_lock'), payload, { merge: true }).catch(() => {});
+  }
+  if (rtdb) {
+    set(ref(rtdb, 'system/admin_lock'), payload).catch(() => {});
+  }
+}
+
+async function releaseSingleAdminLock(sessionToken) {
+  const tok = String(sessionToken || '');
+  const authUid = (auth && auth.currentUser && auth.currentUser.uid) ? auth.currentUser.uid : '';
+  const cleared = { active: false, adminUser: '400@kp', holderDeviceId: '', holderAuthUid: '', sessionToken: '', releasedAt: Date.now(), updatedAt: Date.now() };
+  try {
+    const cur = JSON.parse(localStorage.getItem(ADMIN_LOCAL_LOCK_KEY) || '{}');
+    if (!tok || !cur.sessionToken || cur.sessionToken === tok) {
+      localStorage.setItem(ADMIN_LOCAL_LOCK_KEY, JSON.stringify(cleared));
+    }
+  } catch (e) {}
+  if (db && !isFirestoreQuotaBlocked()) {
+    try {
+      const snap = await getDoc(doc(db, 'system', 'admin_lock'));
+      const d = snap.exists() ? snap.data() : {};
+      if (!tok || !d.sessionToken || d.sessionToken === tok || (authUid && d.holderAuthUid === authUid)) {
+        await setDoc(doc(db, 'system', 'admin_lock'), cleared);
+      }
+    } catch (e) {}
+  }
+  if (rtdb) {
+    try {
+      const snap = await get(ref(rtdb, 'system/admin_lock'));
+      const d = snap.exists() ? snap.val() : {};
+      if (!tok || !d.sessionToken || d.sessionToken === tok || (authUid && d.holderAuthUid === authUid)) {
+        await set(ref(rtdb, 'system/admin_lock'), cleared);
+      }
+    } catch (e) {}
+  }
+}
+
+function listenToAdminLock(callback) {
+  let unsubFs = null;
+  let unsubRt = null;
+  if (db && !isFirestoreQuotaBlocked()) {
+    try {
+      unsubFs = onSnapshot(doc(db, 'system', 'admin_lock'), (snap) => {
+        if (snap.exists() && typeof callback === 'function') callback(snap.data());
+      }, () => {});
+    } catch (e) {}
+  }
+  if (rtdb) {
+    try {
+      unsubRt = onValue(ref(rtdb, 'system/admin_lock'), (snap) => {
+        if (snap.exists() && typeof callback === 'function') callback(snap.val());
+      }, () => {});
+    } catch (e) {}
+  }
+  return () => {
+    if (typeof unsubFs === 'function') unsubFs();
+    if (typeof unsubRt === 'function') unsubRt();
+  };
+}
+
+/**
+ * Save user balances to Firestore & RTDB (compatibility wrapper)
  */
 async function saveUserToCloud(user) {
-  if (!db || !user || !user.id) return false;
-  try {
-    const userRef = doc(db, 'users', String(user.id));
-    await setDoc(userRef, {
-      ...user,
-      updatedAt: Date.now()
-    }, { merge: true });
-    return true;
-  } catch (err) {
-    return false;
+  if (!user || !user.id) return false;
+  let ok = false;
+  const resolvedName = String(user.displayName || user.name || '').trim();
+  const payload = { ...user, updatedAt: Date.now() };
+  if (resolvedName) {
+    payload.displayName = resolvedName;
+    payload.name = resolvedName;
+    payload.displayNameLower = resolvedName.toLowerCase();
   }
+  if (db && !isFirestoreQuotaBlocked()) {
+    try {
+      await setDoc(doc(db, 'users', String(user.id)), payload, { merge: true });
+      ok = true;
+    } catch (err) {
+      markFirestoreQuotaBlocked(err);
+    }
+  }
+  if (rtdb) {
+    try {
+      await update(ref(rtdb, 'users/' + String(user.id)), payload);
+      ok = true;
+    } catch (e) {}
+  }
+  return ok;
 }
 
 /**
@@ -2387,6 +3046,9 @@ function resetLocalPlayerSessionKeys() {
     rawSetItem('task_game_completed_tasks', '{}');
     rawSetItem('task_completed_tasks', '{}');
     rawSetItem('task_unlocked_tasks', '{}');
+    rawSetItem('tap_empire_common_completed_ids', '{}');
+    rawSetItem('tap_empire_google_completed_ids', '[]');
+    rawSetItem('tap_empire_star_unlocked_costs', '{}');
     rawSetItem('task_last_diamond_completed_count', '0');
 
     // 4. Events, Passes, Milestones & Offers
@@ -2425,9 +3087,15 @@ function resetLocalPlayerSessionKeys() {
     localStorage.removeItem('honeybee_game_state');
     localStorage.removeItem('pandemic_state');
 
-    // 7. Transactions, Cashout history & Referrals
+    // 7. Transactions, Cashout history, Shop unlocks, Feedback/Tickets & Referrals
     rawSetItem('task_game_withdrawals', '[]');
     rawSetItem('task_game_stars_transactions', '[]');
+    rawSetItem('task_game_shop_unlocks', '{}');
+    rawSetItem('tap_empire_pending_prizes', '{}');
+    rawSetItem('task_game_daily_streak_v2', '{}');
+    rawSetItem('task_game_streak_days', '0');
+    rawSetItem('referral_star_milestones_claimed', '{}');
+    rawSetItem('user_support_tickets', '[]');
     rawSetItem('task_game_referrals_list', '[]');
     rawSetItem('task_referral_count', '0');
     localStorage.removeItem('task_game_stars_rating');
@@ -2481,13 +3149,14 @@ async function resetUserAccountInCloud(userId, userObj = null) {
   const userName = (userObj && (userObj.name || userObj.displayName)) || 'Player';
   const userEmail = (userObj && userObj.email) || `${userId}@novatasks.io`;
   const userAvatar = (userObj && userObj.avatar) || '⚡';
-  const userRole = (userObj && userObj.role === 'admin') ? 'admin' : 'player';
+  const userRole = (userObj && userObj.role === 'vip') ? 'vip' : 'player';
 
   const cleanInitialData = {
     uid: String(userId),
     id: String(userId),
     displayName: userName,
     name: userName,
+    displayNameLower: String(userName).trim().toLowerCase(),
     email: userEmail,
     avatar: userAvatar,
     role: userRole,
@@ -2495,10 +3164,14 @@ async function resetUserAccountInCloud(userId, userObj = null) {
     stars: 0,
     tickets: 0,
     diamonds: 0,
+    ultraCredits: 0,
+    ultraTotalCompleted: 0,
+    claimedWalletOffers: {},
     xp: 0,
     energy: 100,
     level: 'LVL 1 • NOVICE',
     passLevel: 1,
+    passTotalCompleted: 0,
     tasksCompleted: 0,
     totalTasks: 0,
     eventTasks: 0,
@@ -2509,6 +3182,10 @@ async function resetUserAccountInCloud(userId, userObj = null) {
     passActivated: false,
     completedTasks: {},
     unlockedTasks: {},
+    commonCompletedIds: {},
+    googleCompletedIds: [],
+    starUnlockedCosts: {},
+    proGroupState: {},
     claims: {},
     claimedMilestones: {},
     sunflowerState: null,
@@ -2523,65 +3200,52 @@ async function resetUserAccountInCloud(userId, userObj = null) {
     updatedAt: now
   };
 
-  // 1. Reset 'users' document to clean initial state
-  if (db) {
+  if (rtdb) {
+    try { await set(ref(rtdb, 'users/' + String(userId)), cleanInitialData); } catch (e) {}
+    if (altUid) {
+      try { await set(ref(rtdb, 'users/' + String(altUid)), { ...cleanInitialData, uid: String(altUid), id: String(altUid) }); } catch (e) {}
+    }
+    try { await set(ref(rtdb, 'players_data/' + String(userId)), null); } catch (e) {}
+  }
+
+  // 1. Reset 'users' document to clean initial state (indexed queries — safe at 10,000+ players)
+  if (db && !isFirestoreQuotaBlocked()) {
     try {
       await setDoc(doc(db, 'users', String(userId)), cleanInitialData);
       console.log(`[Firebase Cloud] Reset users/${userId} to initial default document.`);
     } catch (e) {
+      markFirestoreQuotaBlocked(e);
       console.warn(`[Firebase Cloud] Error resetting users/${userId}:`, e.message);
     }
 
-    if (altUid) {
+    if (altUid && !isFirestoreQuotaBlocked()) {
       try {
         await setDoc(doc(db, 'users', String(altUid)), { ...cleanInitialData, uid: String(altUid), id: String(altUid) });
-        console.log(`[Firebase Cloud] Reset users/${altUid} to initial default document.`);
       } catch (e) {}
     }
 
-    // 2. Purge user records from 'players_data' collection
+    // 2. Purge user records from 'players_data' via indexed userId query
     try {
-      const pCol = collection(db, 'players_data');
-      const pSnap = await getDocs(pCol);
+      const pSnap = await getDocs(query(collection(db, 'players_data'), where('userId', '==', String(userId)), limit(100)));
       for (const d of pSnap.docs) {
-        const dId = d.id;
-        const dData = d.data() || {};
-        if (dId === userId || dId.startsWith(`${userId}_`) || (altUid && (dId === altUid || dId.startsWith(`${altUid}_`))) || dData.userId === userId || dData.uid === userId) {
-          try {
-            await deleteDoc(doc(db, 'players_data', dId));
-            console.log(`[Firebase Cloud] Purged players_data/${dId}`);
-          } catch (e) {}
-        }
+        try { await deleteDoc(doc(db, 'players_data', d.id)); } catch (e) {}
       }
     } catch (e) {}
 
-    // 3. Purge user redemptions from 'referral_redemptions'
+    // 3. Purge user redemptions from 'referral_redemptions' via indexed query
     try {
-      const redCol = collection(db, 'referral_redemptions');
-      const redSnap = await getDocs(redCol);
+      const redSnap = await getDocs(query(collection(db, 'referral_redemptions'), where('redeemedByUserId', '==', String(userId)), limit(50)));
       for (const d of redSnap.docs) {
-        const dData = d.data() || {};
-        if (dData.redeemedByUserId === userId || (altUid && dData.redeemedByUserId === altUid) || d.id.includes(userId)) {
-          try {
-            await deleteDoc(doc(db, 'referral_redemptions', d.id));
-            console.log(`[Firebase Cloud] Purged referral redemption ${d.id}`);
-          } catch (e) {}
-        }
+        try { await deleteDoc(doc(db, 'referral_redemptions', d.id)); } catch (e) {}
       }
     } catch (e) {}
 
-    // 4. Purge user withdrawals from 'withdrawals'
+    // 4. Purge user withdrawals from 'withdrawals' via indexed query
     try {
-      const wdCol = collection(db, 'withdrawals');
-      const wdSnap = await getDocs(wdCol);
+      const wdSnap = await getDocs(query(collection(db, 'withdrawals'), where('userId', '==', String(userId)), limit(100)));
       for (const d of wdSnap.docs) {
-        const dData = d.data() || {};
-        if (dData.userId === userId || (altUid && dData.userId === altUid) || (userObj && userObj.name && (dData.playerName === userObj.name || dData.userName === userObj.name))) {
-          try {
-            await deleteDoc(doc(db, 'withdrawals', d.id));
-            console.log(`[Firebase Cloud] Purged user withdrawal ${d.id}`);
-          } catch (e) {}
-        }
+        try { await deleteDoc(doc(db, 'withdrawals', d.id)); } catch (e) {}
+        if (rtdb) { try { await set(ref(rtdb, 'withdrawals/' + d.id), null); } catch (_) {} }
       }
     } catch (e) {}
   }
@@ -2608,6 +3272,7 @@ async function resetUserAccountInCloud(userId, userObj = null) {
       coins: 0,
       stars: 0,
       tickets: 0,
+      diamonds: 0,
       timestamp: now
     });
     ch.close();
@@ -2627,6 +3292,7 @@ async function resetUserAccountInCloud(userId, userObj = null) {
       coins: 0,
       stars: 0,
       tickets: 0,
+      diamonds: 0,
       timestamp: now
     });
     bc.close();
@@ -2637,118 +3303,64 @@ async function resetUserAccountInCloud(userId, userObj = null) {
 }
 
 /**
- * Completely remove all data for a deleted user from Firebase Firestore
- * Purges users/{id}, players_data, referral_codes, referral_redemptions, and withdrawals
+ * Completely remove all data for a deleted user from Firebase Firestore & RTDB
+ * Uses indexed queries — safe at 10,000+ players.
  */
 async function deleteUserFromCloud(userId, userObj = null) {
   if (!userId) return false;
   console.log(`%c[Firebase Cloud] Deleting all data for user "${userId}"...`, "color: #ef4444; font-weight: bold;");
 
-  if (!db) {
-    console.warn("[Firebase Cloud] Firestore database not connected.");
-    return false;
-  }
-
   const altUid = (userObj && userObj.uid && userObj.uid !== userId) ? userObj.uid : null;
 
-  // 1. Delete from 'users' collection by ID
-  try {
-    const userRef = doc(db, 'users', String(userId));
-    await deleteDoc(userRef);
-    console.log(`[Firebase Cloud] Deleted users/${userId}`);
-  } catch (e) {
-    console.warn(`[Firebase Cloud] Note deleting users/${userId}:`, e.message);
+  if (rtdb) {
+    try { await set(ref(rtdb, 'users/' + String(userId)), null); } catch (e) {}
+    if (altUid) { try { await set(ref(rtdb, 'users/' + String(altUid)), null); } catch (e) {} }
+    try { await set(ref(rtdb, 'players_data/' + String(userId)), null); } catch (e) {}
   }
 
-  if (altUid) {
+  if (db && !isFirestoreQuotaBlocked()) {
+    try { await deleteDoc(doc(db, 'users', String(userId))); } catch (e) { markFirestoreQuotaBlocked(e); }
+    if (altUid && !isFirestoreQuotaBlocked()) {
+      try { await deleteDoc(doc(db, 'users', String(altUid))); } catch (e) { markFirestoreQuotaBlocked(e); }
+    }
+
+    // Indexed cleanup for players_data
     try {
-      const altRef = doc(db, 'users', String(altUid));
-      await deleteDoc(altRef);
-      console.log(`[Firebase Cloud] Deleted users/${altUid}`);
+      const pSnap = await getDocs(query(collection(db, 'players_data'), where('userId', '==', String(userId)), limit(100)));
+      for (const d of pSnap.docs) {
+        try { await deleteDoc(doc(db, 'players_data', d.id)); } catch (e) {}
+      }
+    } catch (e) {}
+
+    // Indexed cleanup for player referral codes (never touch reserved GLOBAL_* system docs)
+    try {
+      const codesSnap = await getDocs(query(collection(db, 'referral_codes'), where('userId', '==', String(userId)), limit(25)));
+      for (const d of codesSnap.docs) {
+        if (!['GLOBAL_TASKS', 'GLOBAL_APP_SETTINGS', 'LEADERBOARD_SESSIONS'].includes(d.id)) {
+          try { await deleteDoc(doc(db, 'referral_codes', d.id)); } catch (err) {}
+          if (rtdb) { try { await set(ref(rtdb, 'referral_codes/' + d.id), null); } catch (_) {} }
+        }
+      }
+    } catch (e) {}
+
+    // Indexed cleanup for referral_redemptions
+    try {
+      const redSnap = await getDocs(query(collection(db, 'referral_redemptions'), where('redeemedByUserId', '==', String(userId)), limit(50)));
+      for (const d of redSnap.docs) {
+        try { await deleteDoc(doc(db, 'referral_redemptions', d.id)); } catch (err) {}
+        if (rtdb) { try { await set(ref(rtdb, 'referral_redemptions/' + d.id), null); } catch (_) {} }
+      }
+    } catch (e) {}
+
+    // Indexed cleanup for withdrawals
+    try {
+      const wdSnap = await getDocs(query(collection(db, 'withdrawals'), where('userId', '==', String(userId)), limit(100)));
+      for (const d of wdSnap.docs) {
+        try { await deleteDoc(doc(db, 'withdrawals', d.id)); } catch (err) {}
+        if (rtdb) { try { await set(ref(rtdb, 'withdrawals/' + d.id), null); } catch (_) {} }
+      }
     } catch (e) {}
   }
-
-  // 2. Query and delete any matching records in 'users' collection
-  try {
-    const usersCol = collection(db, 'users');
-    const snap = await getDocs(usersCol);
-    for (const d of snap.docs) {
-      const data = d.data() || {};
-      const matchesId = d.id === userId || (altUid && d.id === altUid);
-      const matchesUid = data.uid === userId || (altUid && data.uid === altUid);
-      const matchesSubId = data.id === userId;
-      const matchesEmail = (userObj && userObj.email && data.email && data.email.toLowerCase() === userObj.email.toLowerCase());
-      const matchesName = (userObj && userObj.name && data.displayName && data.displayName.toLowerCase() === userObj.name.toLowerCase());
-
-      if (matchesId || matchesUid || matchesSubId || matchesEmail || matchesName) {
-        try {
-          await deleteDoc(doc(db, 'users', d.id));
-          console.log(`[Firebase Cloud] Deleted user document users/${d.id}`);
-        } catch (err) {}
-      }
-    }
-  } catch (e) {}
-
-  // 2.5 Purge user documents from 'players_data' collection
-  try {
-    const pCol = collection(db, 'players_data');
-    const pSnap = await getDocs(pCol);
-    for (const d of pSnap.docs) {
-      const dId = d.id;
-      const dData = d.data() || {};
-      if (dId === userId || dId.startsWith(`${userId}_`) || (altUid && (dId === altUid || dId.startsWith(`${altUid}_`))) || dData.userId === userId || dData.uid === userId) {
-        try {
-          await deleteDoc(doc(db, 'players_data', dId));
-          console.log(`[Firebase Cloud] Purged players_data/${dId}`);
-        } catch (e) {}
-      }
-    }
-  } catch (e) {}
-
-  // 3. Delete user referral codes from 'referral_codes'
-  try {
-    const codesCol = collection(db, 'referral_codes');
-    const codesSnap = await getDocs(codesCol);
-    for (const d of codesSnap.docs) {
-      const data = d.data() || {};
-      if (data.userId === userId || (altUid && data.userId === altUid) || (userObj && userObj.name && data.userName === userObj.name)) {
-        try {
-          await deleteDoc(doc(db, 'referral_codes', d.id));
-          console.log(`[Firebase Cloud] Deleted referral code ${d.id}`);
-        } catch (err) {}
-      }
-    }
-  } catch (e) {}
-
-  // 4. Delete user redemptions from 'referral_redemptions'
-  try {
-    const redCol = collection(db, 'referral_redemptions');
-    const redSnap = await getDocs(redCol);
-    for (const d of redSnap.docs) {
-      const data = d.data() || {};
-      if (data.redeemedByUserId === userId || (altUid && data.redeemedByUserId === altUid) || d.id.includes(userId)) {
-        try {
-          await deleteDoc(doc(db, 'referral_redemptions', d.id));
-          console.log(`[Firebase Cloud] Deleted redemption ${d.id}`);
-        } catch (err) {}
-      }
-    }
-  } catch (e) {}
-
-  // 5. Delete user withdrawals from 'withdrawals'
-  try {
-    const wdCol = collection(db, 'withdrawals');
-    const wdSnap = await getDocs(wdCol);
-    for (const d of wdSnap.docs) {
-      const data = d.data() || {};
-      if (data.userId === userId || (altUid && data.userId === altUid) || (userObj && userObj.name && (data.playerName === userObj.name || data.userName === userObj.name))) {
-        try {
-          await deleteDoc(doc(db, 'withdrawals', d.id));
-          console.log(`[Firebase Cloud] Deleted withdrawal ${d.id}`);
-        } catch (err) {}
-      }
-    }
-  } catch (e) {}
 
   // 6. Clean local referral codes cache
   try {
@@ -2772,6 +3384,9 @@ async function deleteUserFromCloud(userId, userObj = null) {
   if (userId === currentUid || (altUid && altUid === currentUid) || (userObj && userObj.name && currentName === userObj.name)) {
     localStorage.removeItem('player_uid');
     localStorage.removeItem('player_email');
+    localStorage.removeItem('player_username');
+    localStorage.removeItem('player_username_confirmed');
+    localStorage.removeItem('player_avatar');
     localStorage.setItem('player_logged_in', 'false');
     resetLocalPlayerSessionKeys();
   }
@@ -2805,14 +3420,18 @@ async function deleteUserFromCloud(userId, userObj = null) {
   return true;
 }
 
-// Register user's unique referral code in Firebase Firestore
+const RESERVED_SYSTEM_REF_IDS = new Set(['GLOBAL_TASKS', 'GLOBAL_APP_SETTINGS', 'LEADERBOARD_SESSIONS']);
+
+// Register user's unique referral code in Firebase Firestore & RTDB
 async function registerReferralCodeInCloud(code, userId, userName) {
   if (!code) return false;
   const cleanCode = String(code).trim().toUpperCase();
-  const currentUid = auth && auth.currentUser ? auth.currentUser.uid : (userId || 'usr_1');
+  if (!cleanCode || RESERVED_SYSTEM_REF_IDS.has(cleanCode)) return false;
+  await ensureFirebaseAuthReady(2000);
+  const currentUid = auth && auth.currentUser ? auth.currentUser.uid : (userId || getEffectivePlayerUid());
   const referralData = {
     code: cleanCode,
-    userId: currentUid,
+    userId: String(currentUid),
     userName: userName || 'Player',
     rewardCoins: 100,
     updatedAt: Date.now()
@@ -2832,27 +3451,30 @@ async function registerReferralCodeInCloud(code, userId, userName) {
     localStorage.setItem('task_game_all_registered_codes', JSON.stringify(allCodes));
   } catch (e) {}
 
-  if (db) {
+  if (db && !isFirestoreQuotaBlocked()) {
     try {
-      const codeRef = doc(db, 'referral_codes', cleanCode);
-      await setDoc(codeRef, referralData, { merge: true });
-      console.log(`%c[Firebase] Referral code "${cleanCode}" saved to Firestore.`, "color: #10b981; font-weight: bold;");
-      return true;
+      await setDoc(doc(db, 'referral_codes', cleanCode), referralData, { merge: true });
     } catch (err) {
-      console.warn("[Firebase] Could not write referral code to Firestore:", err.message);
+      markFirestoreQuotaBlocked(err);
     }
+  }
+  if (rtdb) {
+    try { await set(ref(rtdb, 'referral_codes/' + cleanCode), referralData); } catch (e) {}
   }
   return true;
 }
 
 /**
- * Verify a referral code with Firebase Firestore
+ * Verify a referral code with Firebase Firestore & RTDB fallback
  */
 async function verifyReferralCodeInCloud(code, currentUserId) {
   if (!code) {
     return { valid: false, error: 'Please enter a referral code to verify.' };
   }
   const cleanCode = String(code).trim().toUpperCase();
+  if (RESERVED_SYSTEM_REF_IDS.has(cleanCode)) {
+    return { valid: false, error: 'Invalid referral code.' };
+  }
 
   // Self-referral check: Compare against current user's active referral code
   const myActiveCode = (localStorage.getItem('task_game_user_referral_code') || localStorage.getItem('user_referral_code') || '').toUpperCase();
@@ -2865,16 +3487,20 @@ async function verifyReferralCodeInCloud(code, currentUserId) {
 
   let cloudData = null;
 
-  if (db) {
+  if (db && !isFirestoreQuotaBlocked()) {
     try {
-      const codeRef = doc(db, 'referral_codes', cleanCode);
-      const snap = await getDoc(codeRef);
-      if (snap.exists()) {
-        cloudData = snap.data();
-      }
+      const snap = await getDoc(doc(db, 'referral_codes', cleanCode));
+      if (snap.exists()) cloudData = snap.data();
     } catch (err) {
-      console.warn("[Firebase] Referral lookup note:", err.message);
+      markFirestoreQuotaBlocked(err);
     }
+  }
+
+  if (!cloudData && rtdb) {
+    try {
+      const rSnap = await get(ref(rtdb, 'referral_codes/' + cleanCode));
+      if (rSnap.exists()) cloudData = rSnap.val();
+    } catch (e) {}
   }
 
   if (!cloudData) {
@@ -2901,7 +3527,6 @@ async function verifyReferralCodeInCloud(code, currentUserId) {
     } catch (e) {}
   }
 
-  // Also check task_game_users
   if (!cloudData) {
     try {
       const rawUsers = localStorage.getItem('task_game_users');
@@ -2920,8 +3545,6 @@ async function verifyReferralCodeInCloud(code, currentUserId) {
     } catch (e) {}
   }
 
-  // Hardcoded fake referral codes removed — validate strictly against Firebase records
-
   if (!cloudData) {
     return {
       valid: false,
@@ -2929,7 +3552,6 @@ async function verifyReferralCodeInCloud(code, currentUserId) {
     };
   }
 
-  // Strict self-referral check: Only reject if the owner is proven to be the current user
   if (auth && auth.currentUser && cloudData.userId && String(cloudData.userId) === String(auth.currentUser.uid)) {
     return {
       valid: false,
@@ -2952,100 +3574,130 @@ async function verifyReferralCodeInCloud(code, currentUserId) {
     ownerName: cloudData.userName || 'Friend',
     ownerUserId: cloudData.userId,
     rewardCoins: 100,
-    source: db ? 'Firebase Firestore' : 'Firebase Cloud Sync'
+    source: db ? 'Firebase Firestore' : 'Firebase RTDB'
   };
 }
 
 /**
- * Record referral redemption in Firebase Firestore
+ * Record referral redemption in Firebase Firestore & RTDB
  */
 async function redeemReferralCodeInCloud(code, currentUserId, currentUserName) {
   const cleanCode = String(code).trim().toUpperCase();
-  const effectiveUserId = (auth && auth.currentUser) ? auth.currentUser.uid : (currentUserId || 'usr_1');
+  if (!cleanCode || RESERVED_SYSTEM_REF_IDS.has(cleanCode)) return false;
+  await ensureFirebaseAuthReady(2000);
+  const effectiveUserId = (auth && auth.currentUser) ? auth.currentUser.uid : (currentUserId || getEffectivePlayerUid());
+  const redKey = `${cleanCode}_${effectiveUserId}`;
   const record = {
     code: cleanCode,
-    redeemedByUserId: effectiveUserId,
-    redeemedByUserName: currentUserName || 'NovaEarner',
+    redeemedByUserId: String(effectiveUserId),
+    redeemedByUserName: currentUserName || 'Player',
     rewardCoins: 100,
     redeemedAt: Date.now()
   };
 
-  if (db) {
+  if (db && !isFirestoreQuotaBlocked()) {
     try {
-      const redRef = doc(db, 'referral_redemptions', `${cleanCode}_${effectiveUserId}`);
-      await setDoc(redRef, record, { merge: true });
-    } catch (e) {
-      console.warn("[Firebase] Could not record redemption in cloud:", e);
-    }
+      await setDoc(doc(db, 'referral_redemptions', redKey), record, { merge: true });
+    } catch (e) { markFirestoreQuotaBlocked(e); }
+  }
+  if (rtdb) {
+    try { await set(ref(rtdb, 'referral_redemptions/' + redKey), record); } catch (e) {}
   }
   return true;
 }
 
 /**
- * Save Global Leaderboard Event to Firestore (system/leaderboard_event)
+ * Save Global Leaderboard Event to Firestore & RTDB (system/leaderboard_event)
  */
 async function saveGlobalLeaderboardEventToCloud(eventData) {
   if (!eventData) return false;
+  const payload = {
+    ...eventData,
+    updatedAt: Date.now()
+  };
+  let saved = false;
   try {
-    localStorage.setItem('task_game_leaderboard_event', JSON.stringify(eventData));
-    if (db) {
-      const eventRef = doc(db, 'system', 'leaderboard_event');
-      await setDoc(eventRef, {
-        ...eventData,
-        updatedAt: Date.now()
-      }, { merge: true });
-      return true;
+    localStorage.setItem('task_game_leaderboard_event', JSON.stringify(payload));
+  } catch (e) {}
+  if (db && !isFirestoreQuotaBlocked()) {
+    try {
+      await setDoc(doc(db, 'system', 'leaderboard_event'), payload, { merge: true });
+      saved = true;
+    } catch (e) {
+      markFirestoreQuotaBlocked(e);
+      console.warn('[Firebase] Could not save global event to Firestore:', e.message);
     }
-  } catch (e) {
-    console.warn('[Firebase] Could not save global event to cloud:', e.message);
   }
-  return false;
+  if (rtdb) {
+    try {
+      await set(ref(rtdb, 'system/leaderboard_event'), payload);
+      saved = true;
+    } catch (e) {}
+  }
+  return saved;
 }
 
 /**
- * Real-time listener for Global Leaderboard Event in Firestore
+ * Dual Real-time listener for Global Leaderboard Event (Firestore + RTDB)
  */
 function listenToCloudLeaderboardEvent(callback) {
-  if (!db) return null;
-  try {
-    const eventRef = doc(db, 'system', 'leaderboard_event');
-    const unsubscribe = onSnapshot(eventRef, (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data();
-        if (data && data.endTime) {
-          localStorage.setItem('task_game_leaderboard_event', JSON.stringify(data));
-          try {
-            const ch = new BroadcastChannel('nova_task_sync');
-            ch.postMessage({ type: 'EVENT_SYNCED', event: data, timestamp: Date.now() });
-          } catch (e) {}
+  let unsubFs = null;
+  let unsubRt = null;
+  let lastEventTs = 0;
 
-          if (typeof callback === 'function') {
-            callback(data);
-          }
-        }
-      }
-    }, (err) => {
-      console.log('[Firebase] Leaderboard event listening in offline mode.');
-    });
-    return unsubscribe;
-  } catch (e) {
-    return null;
+  const applyEventData = (data) => {
+    if (!data || !data.endTime) return;
+    const ts = Number(data.updatedAt || 0) || 0;
+    if (lastEventTs > 0 && ts > 0 && ts + 500 < lastEventTs) return;
+    if (ts > lastEventTs) lastEventTs = ts;
+    try {
+      localStorage.setItem('task_game_leaderboard_event', JSON.stringify(data));
+      const ch = new BroadcastChannel('nova_task_sync');
+      ch.postMessage({ type: 'EVENT_SYNCED', event: data, timestamp: Date.now() });
+      ch.close();
+    } catch (e) {}
+    if (typeof callback === 'function') {
+      try { callback(data); } catch (e) {}
+    }
+  };
+
+  if (db && !isFirestoreQuotaBlocked()) {
+    try {
+      unsubFs = onSnapshot(doc(db, 'system', 'leaderboard_event'), (snapshot) => {
+        if (snapshot.exists()) applyEventData(snapshot.data());
+      }, (err) => { markFirestoreQuotaBlocked(err); });
+    } catch (e) {}
   }
+  if (rtdb) {
+    try {
+      unsubRt = onValue(ref(rtdb, 'system/leaderboard_event'), (snap) => {
+        if (snap.exists()) applyEventData(snap.val());
+      }, () => {});
+    } catch (e) {}
+  }
+  return () => {
+    if (typeof unsubFs === 'function') unsubFs();
+    if (typeof unsubRt === 'function') unsubRt();
+  };
 }
 
 /**
- * Save withdrawal to Firestore (withdrawals/{id})
+ * Save withdrawal to Firestore & RTDB (withdrawals/{id})
  */
 async function saveWithdrawalToCloud(withdrawalData) {
   if (!withdrawalData) return false;
   try {
+    await ensureFirebaseAuthReady(2000);
     const id = withdrawalData.id || ('wd_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7));
     const contactValue = String(withdrawalData.contactInfo || withdrawalData.whatsapp || withdrawalData.email || '').trim();
     const inferredType = withdrawalData.contactType || (contactValue.includes('@') ? 'email' : 'mobile');
+    const effUid = withdrawalData.userId || getEffectivePlayerUid();
+    const authUid = (auth && auth.currentUser && auth.currentUser.uid) ? auth.currentUser.uid : effUid;
     const payload = {
       ...withdrawalData,
       id: String(id),
-      userId: withdrawalData.userId || getEffectivePlayerUid(),
+      userId: String(effUid),
+      ownerAuthUid: String(withdrawalData.ownerAuthUid || authUid),
       playerName: withdrawalData.playerName || withdrawalData.userName || localStorage.getItem('player_username') || 'Player',
       contactInfo: contactValue,
       contactType: inferredType,
@@ -3057,18 +3709,24 @@ async function saveWithdrawalToCloud(withdrawalData) {
       status: withdrawalData.status || 'pending',
       updatedAt: Date.now()
     };
-    if (db) {
-      const wdRef = doc(db, 'withdrawals', String(id));
-      await setDoc(wdRef, payload, { merge: true });
+    let ok = false;
+    if (db && !isFirestoreQuotaBlocked()) {
+      try {
+        await setDoc(doc(db, 'withdrawals', String(id)), payload, { merge: true });
+        ok = true;
+      } catch (fsErr) {
+        markFirestoreQuotaBlocked(fsErr);
+      }
     }
     if (rtdb) {
       try {
         await update(ref(rtdb, 'withdrawals/' + String(id)), payload);
-      } catch(rtdbWdErr) {
+        ok = true;
+      } catch (rtdbWdErr) {
         console.warn('[Firebase RTDB] RTDB withdrawal save notice:', rtdbWdErr.message);
       }
     }
-    return true;
+    return ok;
   } catch (err) {
     console.warn('[Firebase] Could not save withdrawal to cloud:', err.message);
     return false;
@@ -3079,7 +3737,8 @@ function maskWithdrawalContactForNonAdmin(row) {
   if (!row || typeof row !== 'object') return row;
   if (isAuthorizedAdminSession()) return row;
   const uid = getEffectivePlayerUid();
-  if (uid && String(row.userId || '') === String(uid)) return row;
+  const authUid = (auth && auth.currentUser && auth.currentUser.uid) ? auth.currentUser.uid : '';
+  if ((uid && String(row.userId || '') === String(uid)) || (authUid && String(row.ownerAuthUid || '') === String(authUid))) return row;
   return {
     ...row,
     whatsapp: '***',
@@ -3091,11 +3750,13 @@ function maskWithdrawalContactForNonAdmin(row) {
 
 /**
  * Real-time listener for withdrawals in Firestore & RTDB
+ * Admin streams full withdrawals queue; players query strictly own records matching security rules.
  */
 function listenToCloudWithdrawals(callback) {
   const merged = new Map();
   let unsubFs = null;
   let unsubRtdb = null;
+  let cancelled = false;
 
   const stripUndef = (obj) => {
     const out = {};
@@ -3119,191 +3780,271 @@ function listenToCloudWithdrawals(callback) {
   };
 
   const emit = () => {
-    if (typeof callback === 'function') {
-      try {
-        const localRaw = JSON.parse(localStorage.getItem('task_game_withdrawals') || '[]');
-        if (Array.isArray(localRaw)) {
-          localRaw.forEach((lw) => {
-            if (lw && lw.id) {
-              const key = String(lw.id);
-              const existing = merged.get(key);
-              if (!existing) {
-                merged.set(key, lw);
-              } else {
-                const pickLocal = Number(lw.updatedAt || lw.deliveryUpdatedAt || 0) > Number(existing.updatedAt || existing.deliveryUpdatedAt || 0);
-                mergeEntry(key, lw, pickLocal);
-              }
+    if (cancelled || typeof callback !== 'function') return;
+    try {
+      const localRaw = JSON.parse(localStorage.getItem('task_game_withdrawals') || '[]');
+      if (Array.isArray(localRaw)) {
+        localRaw.forEach((lw) => {
+          if (lw && lw.id) {
+            const key = String(lw.id);
+            const existing = merged.get(key);
+            if (!existing) {
+              merged.set(key, lw);
+            } else {
+              const pickLocal = Number(lw.updatedAt || lw.deliveryUpdatedAt || 0) > Number(existing.updatedAt || existing.deliveryUpdatedAt || 0);
+              mergeEntry(key, lw, pickLocal);
             }
-          });
-        }
+          }
+        });
+      }
+    } catch (e) {}
+    const sorted = Array.from(merged.values())
+      .map(maskWithdrawalContactForNonAdmin)
+      .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
+    callback(sorted);
+  };
+
+  const startListeners = async () => {
+    const isAdmin = isAuthorizedAdminSession();
+    let authUid = (auth && auth.currentUser && auth.currentUser.uid) ? auth.currentUser.uid : '';
+    if (!isAdmin && !authUid) {
+      const u = await ensureFirebaseAuthReady(2500);
+      if (cancelled) return;
+      authUid = (u && u.uid) ? u.uid : getEffectivePlayerUid();
+    }
+
+    if (db && !isFirestoreQuotaBlocked()) {
+      try {
+        const wdSource = isAdmin
+          ? collection(db, 'withdrawals')
+          : query(collection(db, 'withdrawals'), where('ownerAuthUid', '==', String(authUid)), limit(100));
+        unsubFs = onSnapshot(wdSource, (snapshot) => {
+          snapshot.forEach((d) => mergeEntry(d.id, d.data()));
+          emit();
+        }, (err) => { markFirestoreQuotaBlocked(err); });
       } catch (e) {}
-      const sorted = Array.from(merged.values())
-        .map(maskWithdrawalContactForNonAdmin)
-        .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
-      callback(sorted);
+    }
+
+    if (rtdb) {
+      try {
+        const wdRtdbRef = isAdmin
+          ? ref(rtdb, 'withdrawals')
+          : rtdbQuery(ref(rtdb, 'withdrawals'), orderByChild('ownerAuthUid'), equalTo(String(authUid)));
+        unsubRtdb = onValue(wdRtdbRef, (snap) => {
+          if (snap.exists()) {
+            const obj = snap.val() || {};
+            Object.entries(obj).forEach(([k, v]) => {
+              if (v && typeof v === 'object') {
+                const existing = merged.get(String(k));
+                if (!existing || Number(v.updatedAt || 0) >= Number(existing.updatedAt || 0)) {
+                  mergeEntry(k, v);
+                }
+              }
+            });
+            emit();
+          }
+        }, () => {});
+      } catch (e) {}
     }
   };
 
-  if (db) {
-    try {
-      const wdCol = collection(db, 'withdrawals');
-      unsubFs = onSnapshot(wdCol, (snapshot) => {
-        snapshot.forEach((d) => {
-          mergeEntry(d.id, d.data());
-        });
-        emit();
-      }, () => {});
-    } catch (e) {}
-  }
-
-  if (rtdb) {
-    try {
-      const wdRtdbRef = ref(rtdb, 'withdrawals');
-      unsubRtdb = onValue(wdRtdbRef, (snap) => {
-        if (snap.exists()) {
-          const obj = snap.val() || {};
-          Object.entries(obj).forEach(([k, v]) => {
-            if (v && typeof v === 'object') {
-              const existing = merged.get(String(k));
-              if (!existing || Number(v.updatedAt || 0) >= Number(existing.updatedAt || 0)) {
-                mergeEntry(k, v);
-              }
-            }
-          });
-          emit();
-        }
-      }, () => {});
-    } catch (e) {}
-  }
+  startListeners();
 
   return () => {
+    cancelled = true;
     if (typeof unsubFs === 'function') unsubFs();
     if (typeof unsubRtdb === 'function') unsubRtdb();
   };
 }
 
 /**
- * Save Admin Ad configuration to Firestore (system/ad_config)
+ * Save Admin Ad configuration to Firestore & RTDB (system/ad_config)
  */
 async function saveAdConfigToCloud(config) {
-  if (!db || !config) return false;
-  try {
-    const adRef = doc(db, 'system', 'ad_config');
-    await setDoc(adRef, {
-      ...config,
-      updatedAt: Date.now()
-    }, { merge: true });
-    return true;
-  } catch (err) {
-    return false;
+  if (!config) return false;
+  const payload = {
+    ...config,
+    updatedAt: Date.now()
+  };
+  try { localStorage.setItem('task_game_ad_config', JSON.stringify(payload)); } catch (e) {}
+  let ok = false;
+  if (db && !isFirestoreQuotaBlocked()) {
+    try {
+      await setDoc(doc(db, 'system', 'ad_config'), payload, { merge: true });
+      ok = true;
+    } catch (err) { markFirestoreQuotaBlocked(err); }
   }
+  if (rtdb) {
+    try {
+      await set(ref(rtdb, 'system/ad_config'), payload);
+      ok = true;
+    } catch (e) {}
+  }
+  return ok;
 }
 
 /**
- * Real-time listener for Ad config in Firestore
+ * Dual Real-time listener for Ad config in Firestore & RTDB
  */
 function listenToCloudAdConfig(callback) {
-  if (!db) return null;
-  try {
-    const adRef = doc(db, 'system', 'ad_config');
-    return onSnapshot(adRef, (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data();
-        if (data) {
-          localStorage.setItem('task_game_ad_config', JSON.stringify(data));
-          if (typeof callback === 'function') callback(data);
-        }
-      }
-    }, () => {});
-  } catch (e) {
-    return null;
+  let unsubFs = null;
+  let unsubRt = null;
+  const applyAdConfig = (data) => {
+    if (!data) return;
+    try { localStorage.setItem('task_game_ad_config', JSON.stringify(data)); } catch (e) {}
+    if (typeof callback === 'function') callback(data);
+  };
+  if (db && !isFirestoreQuotaBlocked()) {
+    try {
+      unsubFs = onSnapshot(doc(db, 'system', 'ad_config'), (snapshot) => {
+        if (snapshot.exists()) applyAdConfig(snapshot.data());
+      }, (err) => { markFirestoreQuotaBlocked(err); });
+    } catch (e) {}
   }
+  if (rtdb) {
+    try {
+      unsubRt = onValue(ref(rtdb, 'system/ad_config'), (snap) => {
+        if (snap.exists()) applyAdConfig(snap.val());
+      }, () => {});
+    } catch (e) {}
+  }
+  return () => {
+    if (typeof unsubFs === 'function') unsubFs();
+    if (typeof unsubRt === 'function') unsubRt();
+  };
 }
 
 /**
- * Real-time listener for Leaderboard Users in Firestore
+ * Bounded Real-time listener for Leaderboard Top 100 Contenders (Firestore + RTDB fallback)
+ * Safe at 10,000+ players (uses indexed limit(100) query & compact caching).
  */
 function listenToLeaderboardFromCloud(callback) {
-  if (!db) return null;
-  try {
-    const usersCol = collection(db, 'users');
-    return onSnapshot(usersCol, (snapshot) => {
-      const users = [];
-      snapshot.forEach((d) => {
-        const u = d.data();
-        if (u) {
-          users.push({
-            id: d.id,
-            name: u.displayName || 'Player',
-            avatar: u.avatar || '⚡',
-            stars: typeof u.stars === 'number' ? u.stars : 0,
-            coins: typeof u.coins === 'number' ? u.coins : 0,
-            tasksCompleted: typeof u.tasksCompleted === 'number' ? u.tasksCompleted : 0,
-            adsWatched: typeof u.adsWatched === 'number' ? u.adsWatched : 0,
-            updatedAt: u.updatedAt || 0
-          });
+  let unsubFs = null;
+  let cancelled = false;
+
+  const normalizeLbRows = (rawRows) => {
+    const users = rawRows
+      .filter(u => u && typeof u === 'object')
+      .map(u => projectCompactAdminUser(u.id || u.uid, u))
+      .filter(u => u.status !== 'suspended');
+    users.sort((a, b) => (b.eventTasks - a.eventTasks) || (b.stars - a.stars) || (b.totalTasks - a.totalTasks) || (b.coins - a.coins));
+    cacheCompactUsersSummary(users);
+    if (typeof callback === 'function') {
+      try { callback(users); } catch (e) {}
+    }
+  };
+
+  if (db && !isFirestoreQuotaBlocked()) {
+    try {
+      const topQ = query(collection(db, 'users'), orderBy('stars', 'desc'), limit(100));
+      unsubFs = onSnapshot(topQ, (snapshot) => {
+        const rows = [];
+        snapshot.forEach((d) => rows.push({ id: d.id, ...(d.data() || {}) }));
+        normalizeLbRows(rows);
+      }, (err) => {
+        if (!isFirestoreQuotaBlocked()) {
+          try {
+            unsubFs = onSnapshot(query(collection(db, 'users'), limit(100)), (snap) => {
+              const rows = [];
+              snap.forEach((d) => rows.push({ id: d.id, ...(d.data() || {}) }));
+              normalizeLbRows(rows);
+            }, (e2) => markFirestoreQuotaBlocked(e2));
+          } catch (e3) {}
         }
       });
-      // Sort by stars descending, then tasks completed descending
-      users.sort((a, b) => (b.stars - a.stars) || (b.tasksCompleted - a.tasksCompleted));
-      if (users.length > 0) {
-        localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
-      }
-      if (typeof callback === 'function') {
-        callback(users);
-      }
-    }, () => {});
-  } catch (e) {
-    return null;
+    } catch (e) {}
+  } else if (rtdb) {
+    try {
+      const topRtdbQ = rtdbQuery(ref(rtdb, 'users'), orderByChild('stars'), limitToLast(100));
+      get(topRtdbQ).then((snap) => {
+        if (!cancelled && snap.exists()) {
+          const rows = Object.entries(snap.val() || {}).map(([k, v]) => ({ id: k, ...(v || {}) }));
+          normalizeLbRows(rows);
+        }
+      }).catch(() => {});
+    } catch (e) {}
   }
+
+  return () => {
+    cancelled = true;
+    if (typeof unsubFs === 'function') unsubFs();
+  };
 }
 
-// Global Objects on Window
-
 /**
- * Save Leaderboard Sessions history to Firestore cloud
+ * Save Leaderboard Sessions history to Firestore & RTDB
  */
 async function saveLeaderboardSessionsToCloud(sessions) {
   if (!Array.isArray(sessions)) return false;
   let saved = false;
-  try {
-    localStorage.setItem('task_game_leaderboard_sessions', JSON.stringify(sessions));
-    if (db) {
-      const ref = doc(db, 'referral_codes', 'LEADERBOARD_SESSIONS');
-      await setDoc(ref, {
-        sessions: sessions,
-        count: sessions.length,
-        updatedAt: Date.now()
-      }, { merge: true });
+  const payload = {
+    sessions: sessions,
+    count: sessions.length,
+    updatedAt: Date.now()
+  };
+  try { localStorage.setItem('task_game_leaderboard_sessions', JSON.stringify(sessions)); } catch (e) {}
+
+  if (db && !isFirestoreQuotaBlocked()) {
+    try {
+      await setDoc(doc(db, 'system', 'leaderboard_sessions'), payload, { merge: true });
       saved = true;
+    } catch (err) { markFirestoreQuotaBlocked(err); }
+    if (!isFirestoreQuotaBlocked()) {
+      try {
+        await setDoc(doc(db, 'referral_codes', 'LEADERBOARD_SESSIONS'), payload, { merge: true });
+        saved = true;
+      } catch (e) {}
     }
-  } catch (err) {
-    console.warn("[Firebase] Leaderboard sessions save note:", err.message);
+  }
+  if (rtdb) {
+    try {
+      await set(ref(rtdb, 'system/leaderboard_sessions'), payload);
+      saved = true;
+    } catch (e) {}
   }
   return saved;
 }
 
 /**
- * Real-time listener for Leaderboard Sessions from Firestore
+ * Dual Real-time listener for Leaderboard Sessions (Firestore + RTDB)
  */
 function listenToCloudLeaderboardSessions(callback) {
-  if (!db) return null;
-  try {
-    const ref = doc(db, 'referral_codes', 'LEADERBOARD_SESSIONS');
-    return onSnapshot(ref, (snap) => {
-      if (snap.exists()) {
-        const data = snap.data();
-        if (data && Array.isArray(data.sessions)) {
-          localStorage.setItem('task_game_leaderboard_sessions', JSON.stringify(data.sessions));
-          if (typeof callback === 'function') callback(data.sessions);
-        }
-      }
-    }, (err) => {
-      console.log("[Firebase] Offline mode for leaderboard sessions listener.");
-    });
-  } catch (e) {
-    return null;
+  let unsubSys = null;
+  let unsubLegacy = null;
+  let unsubRt = null;
+
+  const applySessions = (data) => {
+    if (data && Array.isArray(data.sessions)) {
+      try { localStorage.setItem('task_game_leaderboard_sessions', JSON.stringify(data.sessions)); } catch (e) {}
+      if (typeof callback === 'function') callback(data.sessions);
+    }
+  };
+
+  if (db && !isFirestoreQuotaBlocked()) {
+    try {
+      unsubSys = onSnapshot(doc(db, 'system', 'leaderboard_sessions'), (snap) => {
+        if (snap.exists()) applySessions(snap.data());
+      }, (err) => { markFirestoreQuotaBlocked(err); });
+    } catch (e) {}
+    try {
+      unsubLegacy = onSnapshot(doc(db, 'referral_codes', 'LEADERBOARD_SESSIONS'), (snap) => {
+        if (snap.exists()) applySessions(snap.data());
+      }, () => {});
+    } catch (e) {}
   }
+  if (rtdb) {
+    try {
+      unsubRt = onValue(ref(rtdb, 'system/leaderboard_sessions'), (snap) => {
+        if (snap.exists()) applySessions(snap.val());
+      }, () => {});
+    } catch (e) {}
+  }
+
+  return () => {
+    if (typeof unsubSys === 'function') unsubSys();
+    if (typeof unsubLegacy === 'function') unsubLegacy();
+    if (typeof unsubRt === 'function') unsubRt();
+  };
 }
 
 const APP_SETTINGS_STORAGE_KEY = 'tap_empire_app_settings';
@@ -3318,7 +4059,12 @@ const DEFAULT_APP_SETTINGS = {
     star: 10,
     pro: 3,
     ultra: 5,
-    quiz: 30
+    quiz: 30,
+    diamond: 10,
+    google: 10
+  },
+  starUnlock: {
+    googleTasksPerUnlock: 2
   },
   vipPlan: {
     costStars: 1000,
@@ -3370,7 +4116,7 @@ const DEFAULT_APP_SETTINGS = {
     freeTasksPerDay: 10,
     dailyIncrement: 10,
     allowAdExtraTasks: true,
-    adExtraTaskCount: 5
+    adExtraTaskCount: 20
   },
   walletOffers: {
     oneTimeOffer: {
@@ -3378,15 +4124,15 @@ const DEFAULT_APP_SETTINGS = {
       title: '₹50 Amazon Shopping Voucher',
       giftAmountInr: 50,
       starCost: 1500,
-      requiredUltraTasks: 30,
-      deductUltraTasks: 30,
+      requiredUltraTasks: 3,
+      deductUltraTasks: 3,
       timerHours: 48,
       countdownEndMs: 0
     },
     ultraMilestones: [
-      { id: 'ultra_ms_100', title: '₹1,000 Amazon Shopping Voucher', requiredUltraTasks: 100, deductUltraTasks: 100, giftAmountInr: 1000, starCost: 10000, enabled: true },
-      { id: 'ultra_ms_500', title: '₹5,000 Amazon Shopping Voucher', requiredUltraTasks: 500, deductUltraTasks: 500, giftAmountInr: 5000, starCost: 50000, enabled: true },
-      { id: 'ultra_ms_1000', title: '₹10,000 Amazon Shopping Voucher', requiredUltraTasks: 1000, deductUltraTasks: 1000, giftAmountInr: 10000, starCost: 100000, enabled: true }
+      { id: 'ultra_ms_100', title: '₹1,000 Amazon Shopping Voucher', requiredUltraTasks: 20, deductUltraTasks: 20, giftAmountInr: 1000, starCost: 10000, enabled: true },
+      { id: 'ultra_ms_500', title: '₹5,000 Amazon Shopping Voucher', requiredUltraTasks: 80, deductUltraTasks: 80, giftAmountInr: 5000, starCost: 50000, enabled: true },
+      { id: 'ultra_ms_1000', title: '₹10,000 Amazon Shopping Voucher', requiredUltraTasks: 140, deductUltraTasks: 140, giftAmountInr: 10000, starCost: 100000, enabled: true }
     ]
   },
   eventLevels: [
@@ -3396,6 +4142,10 @@ const DEFAULT_APP_SETTINGS = {
     { level: 4, title: 'Level 4', requirementTasks: 30, rewardCoins: 350, rewardStars: 75, unlockCost: 0, unlockCurrency: 'coins', active: true },
     { level: 5, title: 'Level 5', requirementTasks: 50, rewardCoins: 500, rewardStars: 120, unlockCost: 0, unlockCurrency: 'coins', active: true }
   ],
+  seasonPass: {
+    startTime: 0,
+    endTime: 0
+  },
   updatedAt: 0
 };
 
@@ -3450,14 +4200,45 @@ function mergeAppSettings(incoming) {
   const primaryVip = mergedVipPlans.find((p) => p.id === 'vip_1000') || mergedVipPlans[1] || mergedVipPlans[0];
   return {
     categoryLimits: { ...DEFAULT_APP_SETTINGS.categoryLimits, ...(src.categoryLimits || {}) },
+    starUnlock: {
+      googleTasksPerUnlock: 2,
+      ...(DEFAULT_APP_SETTINGS.starUnlock || {}),
+      ...(src.starUnlock || {})
+    },
     vipPlan: { ...DEFAULT_APP_SETTINGS.vipPlan, ...(primaryVip ? { costStars: primaryVip.costStars, dailyTasksLimit: primaryVip.dailyTasksLimit, durationDays: primaryVip.durationDays, enabled: primaryVip.enabled, restrictions: primaryVip.restrictions } : {}), ...(src.vipPlan || {}) },
     vipPlans: mergedVipPlans,
     proGroup: { ...DEFAULT_APP_SETTINGS.proGroup, ...(src.proGroup || {}) },
-    dailyProgression: { ...DEFAULT_APP_SETTINGS.dailyProgression, ...(src.dailyProgression || {}) },
+    dailyProgression: (() => {
+      const mergedProg = { ...DEFAULT_APP_SETTINGS.dailyProgression, ...(src.dailyProgression || {}) };
+      if (!mergedProg.customAdExtra && Number(mergedProg.adExtraTaskCount) === 5) {
+        mergedProg.adExtraTaskCount = 20;
+      }
+      return mergedProg;
+    })(),
     walletOffers: mergeWalletOffers(DEFAULT_APP_SETTINGS.walletOffers, src.walletOffers),
     eventLevels: Array.isArray(src.eventLevels) && src.eventLevels.length > 0 ? src.eventLevels : DEFAULT_APP_SETTINGS.eventLevels.map(l => ({ ...l })),
+    seasonPass: {
+      startTime: Math.max(0, Number((src.seasonPass && src.seasonPass.startTime) ?? DEFAULT_APP_SETTINGS.seasonPass.startTime ?? 0) || 0),
+      endTime: Math.max(0, Number((src.seasonPass && src.seasonPass.endTime) ?? DEFAULT_APP_SETTINGS.seasonPass.endTime ?? 0) || 0)
+    },
     updatedAt: Number(src.updatedAt || Date.now())
   };
+}
+
+function syncSeasonPassTimersToStorage(seasonPass) {
+  if (!seasonPass || typeof seasonPass !== 'object') return;
+  try {
+    if (typeof seasonPass.startTime === 'number') {
+      if (seasonPass.startTime > 0) {
+        localStorage.setItem('season_pass_start_timestamp', String(seasonPass.startTime));
+      } else {
+        localStorage.setItem('season_pass_start_timestamp', '0');
+      }
+    }
+    if (typeof seasonPass.endTime === 'number' && seasonPass.endTime > 0) {
+      localStorage.setItem('season_pass_end_timestamp', String(seasonPass.endTime));
+    }
+  } catch (e) {}
 }
 
 function getAppSettings() {
@@ -3474,25 +4255,39 @@ async function saveAppSettingsToCloud(partialSettings) {
     ...current,
     ...(partialSettings || {}),
     categoryLimits: { ...current.categoryLimits, ...((partialSettings && partialSettings.categoryLimits) || {}) },
+    starUnlock: { ...(current.starUnlock || { googleTasksPerUnlock: 2 }), ...((partialSettings && partialSettings.starUnlock) || {}) },
     vipPlan: { ...current.vipPlan, ...((partialSettings && partialSettings.vipPlan) || {}) },
     vipPlans: mergeVipPlans(current.vipPlans, partialSettings && partialSettings.vipPlans),
     proGroup: { ...current.proGroup, ...((partialSettings && partialSettings.proGroup) || {}) },
     dailyProgression: { ...current.dailyProgression, ...((partialSettings && partialSettings.dailyProgression) || {}) },
     walletOffers: mergeWalletOffers(current.walletOffers, partialSettings && partialSettings.walletOffers),
     eventLevels: (partialSettings && Array.isArray(partialSettings.eventLevels)) ? partialSettings.eventLevels : current.eventLevels,
+    seasonPass: {
+      ...(current.seasonPass || DEFAULT_APP_SETTINGS.seasonPass),
+      ...((partialSettings && partialSettings.seasonPass) || {})
+    },
     updatedAt: Date.now()
   });
 
   localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify(merged));
+  syncSeasonPassTimersToStorage(merged.seasonPass);
   window.dispatchEvent(new CustomEvent('settings:changed', { detail: merged }));
   try {
     const ch = new BroadcastChannel(SYNC_CHANNEL_NAME);
     ch.postMessage({ type: 'SETTINGS_UPDATED', settings: merged, timestamp: Date.now() });
+    if (partialSettings && partialSettings.seasonPass) {
+      ch.postMessage({
+        type: 'SEASON_TIMER_UPDATED',
+        startTime: merged.seasonPass.startTime,
+        endTime: merged.seasonPass.endTime,
+        timestamp: Date.now()
+      });
+    }
     ch.close();
   } catch (e) {}
 
   let ok = false;
-  if (db) {
+  if (db && !isFirestoreQuotaBlocked()) {
     try {
       await setDoc(doc(db, 'referral_codes', 'GLOBAL_APP_SETTINGS'), {
         code: 'GLOBAL_APP_SETTINGS',
@@ -3500,14 +4295,16 @@ async function saveAppSettingsToCloud(partialSettings) {
         updatedAt: merged.updatedAt
       }, { merge: true });
       ok = true;
-    } catch (e) {}
-    try {
-      await setDoc(doc(db, 'system', 'app_settings'), {
-        ...merged,
-        settingsJson: JSON.stringify(merged)
-      }, { merge: true });
-      ok = true;
-    } catch (e) {}
+    } catch (e) { markFirestoreQuotaBlocked(e); }
+    if (!isFirestoreQuotaBlocked()) {
+      try {
+        await setDoc(doc(db, 'system', 'app_settings'), {
+          ...merged,
+          settingsJson: JSON.stringify(merged)
+        }, { merge: true });
+        ok = true;
+      } catch (e) { markFirestoreQuotaBlocked(e); }
+    }
   }
   if (rtdb) {
     try {
@@ -3519,16 +4316,32 @@ async function saveAppSettingsToCloud(partialSettings) {
 }
 
 function listenToAppSettings(callback) {
+  let lastSettingsTs = 0;
   const applySettings = (rawObj) => {
-    if (!rawObj) return;
-    let parsed = rawObj;
-    if (typeof rawObj.settingsJson === 'string') {
-      try { parsed = JSON.parse(rawObj.settingsJson); } catch (e) {}
+    if (!rawObj || typeof rawObj !== 'object') return;
+    let parsedFromJson = {};
+    if (typeof rawObj.settingsJson === 'string' && rawObj.settingsJson.trim()) {
+      try { parsedFromJson = JSON.parse(rawObj.settingsJson) || {}; } catch (e) {}
     }
-    const merged = mergeAppSettings(parsed);
+    const structuredKeys = ['categoryLimits', 'starUnlock', 'vipPlan', 'vipPlans', 'proGroup', 'dailyProgression', 'walletOffers', 'eventLevels', 'seasonPass'];
+    const structuredOverrides = {};
+    structuredKeys.forEach((k) => {
+      if (rawObj[k] !== undefined) structuredOverrides[k] = rawObj[k];
+    });
+    const combinedRaw = {
+      ...parsedFromJson,
+      ...structuredOverrides,
+      updatedAt: Number(rawObj.updatedAt || parsedFromJson.updatedAt || Date.now())
+    };
+    const merged = mergeAppSettings(combinedRaw);
+    if (lastSettingsTs > 0 && merged.updatedAt > 0 && merged.updatedAt + 500 < lastSettingsTs) {
+      return;
+    }
+    lastSettingsTs = Math.max(lastSettingsTs, merged.updatedAt || Date.now());
     const localCur = getAppSettings();
     if (!localCur.updatedAt || merged.updatedAt >= localCur.updatedAt) {
       localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify(merged));
+      syncSeasonPassTimersToStorage(merged.seasonPass);
       window.dispatchEvent(new CustomEvent('settings:changed', { detail: merged }));
       if (typeof callback === 'function') callback(merged);
     }
@@ -3538,16 +4351,16 @@ function listenToAppSettings(callback) {
   let unsubSys = null;
   let unsubRtdb = null;
 
-  if (db) {
+  if (db && !isFirestoreQuotaBlocked()) {
     try {
       unsubGlobal = onSnapshot(doc(db, 'referral_codes', 'GLOBAL_APP_SETTINGS'), (snap) => {
         if (snap.exists()) applySettings(snap.data());
-      }, () => {});
+      }, (err) => { markFirestoreQuotaBlocked(err); });
     } catch (e) {}
     try {
       unsubSys = onSnapshot(doc(db, 'system', 'app_settings'), (snap) => {
         if (snap.exists()) applySettings(snap.data());
-      }, () => {});
+      }, (err) => { markFirestoreQuotaBlocked(err); });
     } catch (e) {}
   }
   if (rtdb) {
@@ -3674,7 +4487,7 @@ async function atomicBalanceMutation({ deltaCoins = 0, deltaStars = 0, deltaTick
     updateAllDomBalances(nextC, nextS, nextT, nextD);
     window.dispatchEvent(new CustomEvent('balance:changed', { detail: { coins: nextC, stars: nextS, tickets: nextT, diamonds: nextD, ultraCredits: nextU } }));
 
-    if (db) {
+    if (db && !isFirestoreQuotaBlocked()) {
       try {
         const uid = getEffectivePlayerUid();
         const userRef = doc(db, 'users', String(uid));
@@ -3715,6 +4528,7 @@ async function atomicBalanceMutation({ deltaCoins = 0, deltaStars = 0, deltaTick
           }, { merge: true });
         });
       } catch (cloudErr) {
+        markFirestoreQuotaBlocked(cloudErr);
         if (cloudErr && (cloudErr.message === 'INSUFFICIENT_CLOUD_BALANCE' || cloudErr.message === 'DUPLICATE_TX')) {
           isInternalSync = true;
           try {
@@ -3740,6 +4554,24 @@ async function atomicBalanceMutation({ deltaCoins = 0, deltaStars = 0, deltaTick
         }
         saveCurrentProfileToFirestore();
       }
+    }
+
+    if (rtdb) {
+      try {
+        const uid = getEffectivePlayerUid();
+        const authUid = (auth && auth.currentUser && auth.currentUser.uid) ? auth.currentUser.uid : uid;
+        update(ref(rtdb, 'users/' + String(uid)), {
+          coins: nextC,
+          stars: nextS,
+          tickets: nextT,
+          diamonds: nextD,
+          ultraCredits: nextU,
+          ultraTotalCompleted: nextUT,
+          claimedWalletOffers: nextOffers,
+          ownerAuthUid: authUid,
+          updatedAt: Date.now()
+        }).catch(() => {});
+      } catch (e) {}
     }
 
     return { ok: true, txId: id, coins: nextC, stars: nextS, tickets: nextT, diamonds: nextD, ultraCredits: nextU, ultraTotalCompleted: nextUT };
@@ -3839,6 +4671,7 @@ async function processWithdrawalDecisionInCloud({ wdId, decision, deliveryLink =
       return { ok: false, duplicate: true, error: `Request was already ${msg.split(':')[1]}` };
     }
     const code = String(err && err.code || '').toLowerCase();
+    markFirestoreQuotaBlocked(err);
     const isTransientOrMissing =
       msg === 'TX_TIMEOUT' ||
       msg === 'TX_OFFLINE' ||
@@ -3846,7 +4679,8 @@ async function processWithdrawalDecisionInCloud({ wdId, decision, deliveryLink =
       code === 'unavailable' ||
       code === 'not-found' ||
       code === 'deadline-exceeded' ||
-      /offline|network|timeout|unavailable/i.test(msg);
+      code === 'resource-exhausted' ||
+      /offline|network|timeout|unavailable|quota/i.test(msg);
     if (isTransientOrMissing) {
       let existingLocal = {};
       try {
@@ -3912,6 +4746,185 @@ async function updateWithdrawalDeliveryInCloud({ wdId, deliveryStatus = 'Process
   return { ok: true, cloudSynced: ok, data: patch };
 }
 
+// ============================================================================
+// PLAYER FEEDBACK & SUPPORT TICKETS (Firestore feedbacks + RTDB feedbacks)
+// ============================================================================
+function normalizeFeedbackPayload(feedbackData = {}) {
+  const effUid = String(feedbackData.userId || getEffectivePlayerUid() || 'anon');
+  const authUid = (auth && auth.currentUser && auth.currentUser.uid) ? String(auth.currentUser.uid) : effUid;
+  const createdAt = Number(feedbackData.createdAt || feedbackData.timestamp || Date.now()) || Date.now();
+  const id = String(feedbackData.id || ('fb_' + createdAt + '_' + Math.random().toString(36).slice(2, 7)));
+  const authorName = String(feedbackData.name || feedbackData.userName || localStorage.getItem('player_username') || 'Player').slice(0, 80);
+  const message = String(feedbackData.message || '').trim().slice(0, 4000);
+  return {
+    id,
+    userId: effUid,
+    ownerAuthUid: String(feedbackData.ownerAuthUid || authUid),
+    name: authorName,
+    userName: authorName,
+    avatar: String(feedbackData.avatar || localStorage.getItem('player_avatar') || 'avatar-7.png'),
+    rating: Math.max(1, Math.min(5, parseInt(feedbackData.rating || '5', 10) || 5)),
+    category: String(feedbackData.category || 'General').slice(0, 80),
+    message,
+    date: String(feedbackData.date || new Date(createdAt).toISOString()),
+    dateStr: String(feedbackData.dateStr || ''),
+    createdAt,
+    timestamp: createdAt,
+    status: String(feedbackData.status || 'new')
+  };
+}
+
+async function saveFeedbackToCloud(feedbackData) {
+  if (!feedbackData) return false;
+  try {
+    await ensureFirebaseAuthReady(2500);
+    const payload = normalizeFeedbackPayload(feedbackData);
+    if (!payload.message) return false;
+
+    let ok = false;
+    if (db && !isFirestoreQuotaBlocked()) {
+      try {
+        await setDoc(doc(db, 'feedbacks', payload.id), payload, { merge: true });
+        ok = true;
+      } catch (fsErr) {
+        markFirestoreQuotaBlocked(fsErr);
+        console.warn('[Firebase] Feedback Firestore save notice:', fsErr.message);
+      }
+    }
+    if (rtdb) {
+      try {
+        await update(ref(rtdb, 'feedbacks/' + payload.id), payload);
+        ok = true;
+      } catch (rtdbErr) {
+        console.warn('[Firebase RTDB] Feedback RTDB save notice:', rtdbErr.message);
+      }
+    }
+    return ok;
+  } catch (err) {
+    console.warn('[Firebase] Could not save feedback to cloud:', err.message);
+    return false;
+  }
+}
+
+function listenToCloudFeedbacks(callback) {
+  if (!isAuthorizedAdminSession()) {
+    return () => {};
+  }
+  const fsMap = new Map();
+  const rtdbMap = new Map();
+  let unsubFs = null;
+  let unsubRtdb = null;
+  let cancelled = false;
+
+  const emit = () => {
+    if (cancelled) return;
+    const combined = new Map();
+    rtdbMap.forEach((v, k) => combined.set(k, v));
+    fsMap.forEach((v, k) => combined.set(k, { ...(combined.get(k) || {}), ...v }));
+    const sorted = Array.from(combined.values())
+      .map(normalizeFeedbackPayload)
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+    isInternalSync = true;
+    try {
+      const json = JSON.stringify(sorted);
+      rawSetItem('task_feedbacks', json);
+      rawSetItem('task_game_feedbacks', json);
+    } catch (e) {}
+    isInternalSync = false;
+
+    try {
+      window.dispatchEvent(new CustomEvent('feedbacks:updated', { detail: sorted }));
+    } catch (e) {}
+    if (typeof callback === 'function') {
+      try { callback(sorted); } catch (e) {}
+    }
+  };
+
+  if (db && !isFirestoreQuotaBlocked()) {
+    try {
+      const q = query(collection(db, 'feedbacks'), orderBy('createdAt', 'desc'), limit(200));
+      unsubFs = onSnapshot(q, (snapshot) => {
+        fsMap.clear();
+        snapshot.forEach((docSnap) => {
+          fsMap.set(String(docSnap.id), { ...docSnap.data(), id: String(docSnap.id) });
+        });
+        emit();
+      }, (err) => {
+        markFirestoreQuotaBlocked(err);
+      });
+    } catch (e) {}
+  }
+
+  if (rtdb) {
+    try {
+      const fbRef = rtdbQuery(ref(rtdb, 'feedbacks'), limitToLast(200));
+      unsubRtdb = onValue(fbRef, (snap) => {
+        rtdbMap.clear();
+        if (snap.exists()) {
+          const val = snap.val() || {};
+          Object.keys(val).forEach((k) => {
+            if (val[k] && typeof val[k] === 'object') {
+              rtdbMap.set(String(k), { ...val[k], id: String(k) });
+            }
+          });
+        }
+        emit();
+      }, () => {});
+    } catch (e) {}
+  }
+
+  return () => {
+    cancelled = true;
+    if (typeof unsubFs === 'function') { try { unsubFs(); } catch (e) {} }
+    if (typeof unsubRtdb === 'function') { try { unsubRtdb(); } catch (e) {} }
+  };
+}
+
+async function deleteFeedbackFromCloud(fbId) {
+  if (!fbId || !isAuthorizedAdminSession()) return false;
+  const id = String(fbId);
+  let ok = false;
+  if (db && !isFirestoreQuotaBlocked()) {
+    try {
+      await deleteDoc(doc(db, 'feedbacks', id));
+      ok = true;
+    } catch (err) {
+      markFirestoreQuotaBlocked(err);
+    }
+  }
+  if (rtdb) {
+    try {
+      await remove(ref(rtdb, 'feedbacks/' + id));
+      ok = true;
+    } catch (e) {}
+  }
+  return ok;
+}
+
+async function clearAllFeedbacksInCloud() {
+  if (!isAuthorizedAdminSession()) return false;
+  let ok = false;
+  if (db && !isFirestoreQuotaBlocked()) {
+    try {
+      const snap = await getDocs(query(collection(db, 'feedbacks'), limit(500)));
+      const jobs = [];
+      snap.forEach((docSnap) => jobs.push(deleteDoc(docSnap.ref).catch(() => {})));
+      await Promise.all(jobs);
+      ok = true;
+    } catch (err) {
+      markFirestoreQuotaBlocked(err);
+    }
+  }
+  if (rtdb) {
+    try {
+      await remove(ref(rtdb, 'feedbacks'));
+      ok = true;
+    } catch (e) {}
+  }
+  return ok;
+}
+
 window.TapEmpireUtils = {
   DEFAULT_APP_SETTINGS,
   getAppSettings,
@@ -3922,52 +4935,6 @@ window.TapEmpireUtils = {
   atomicBalanceMutation,
   processWithdrawalDecisionInCloud,
   updateWithdrawalDeliveryInCloud
-};
-
-window.Firebase = {
-  saveLeaderboardSessionsToCloud,
-  listenToCloudLeaderboardSessions,
-  saveAppSettingsToCloud,
-  listenToAppSettings,
-  getAppSettings,
-  atomicBalanceMutation,
-  processWithdrawalDecisionInCloud,
-  updateWithdrawalDeliveryInCloud,
-  app,
-  analytics,
-  db,
-  auth,
-  config: firebaseConfig,
-  firebaseSync,
-  initCloudBalances,
-  // Player & Auth methods
-  getEffectivePlayerUid,
-  updateAllDomBalances,
-  startRealtimeUserSync,
-  saveCurrentProfileToFirestore,
-  signUpWithEmail,
-  signInWithEmail,
-  signOutUser,
-  sendPasswordReset,
-  subscribeToAuth,
-  // Cloud Firestore methods
-  saveTasksToCloud,
-  listenToCloudTasks,
-  listenToCloudUsers,
-  listenToLeaderboardFromCloud,
-  saveUserToCloud,
-  deleteUserFromCloud,
-  saveWithdrawalToCloud,
-  listenToCloudWithdrawals,
-  saveAdConfigToCloud,
-  listenToCloudAdConfig,
-  registerReferralCodeInCloud,
-  verifyReferralCodeInCloud,
-  redeemReferralCodeInCloud,
-  saveGlobalLeaderboardEventToCloud,
-  listenToCloudLeaderboardEvent,
-  openBalanceManageModal,
-  closeBalanceManageModal
 };
 
 window.FirebaseAuth = {
@@ -4039,9 +5006,6 @@ try {
         }
       }
       updateAllDomBalances();
-      if (msg && (msg.type === 'BALANCES_UPDATED' || msg.type === 'COINS_SYNCED' || msg.type === 'TASK_COMPLETED')) {
-        saveCurrentProfileToFirestore();
-      }
     };
   } catch (e) {}
 
@@ -4097,18 +5061,22 @@ window.resetUserAccountInCloud = resetUserAccountInCloud;
 window.resetLocalPlayerSessionKeys = resetLocalPlayerSessionKeys;
 window.listenToCloudWithdrawals = listenToCloudWithdrawals;
 window.saveWithdrawalToCloud = saveWithdrawalToCloud;
+window.saveFeedbackToCloud = saveFeedbackToCloud;
+window.listenToCloudFeedbacks = listenToCloudFeedbacks;
+window.deleteFeedbackFromCloud = deleteFeedbackFromCloud;
+window.clearAllFeedbacksInCloud = clearAllFeedbacksInCloud;
 
 window.saveLeaderboardSessionsToCloud = saveLeaderboardSessionsToCloud;
 window.listenToCloudLeaderboardSessions = listenToCloudLeaderboardSessions;
 
 window.Firebase = {
-  app, 
-  analytics, 
-  db, 
+  app,
+  get analytics() { return analytics; },
+  db,
   rtdb,
   auth,
   config: firebaseConfig,
-  firebaseConfig, 
+  firebaseConfig,
   firebaseSync,
   initCloudBalances,
   getEffectivePlayerUid,
@@ -4120,7 +5088,7 @@ window.Firebase = {
   signOutUser,
   sendPasswordReset,
   subscribeToAuth,
-  saveTasksToCloud, 
+  saveTasksToCloud,
   listenToCloudTasks,
   listenToCloudUsers,
   listenToLeaderboardFromCloud,
@@ -4130,6 +5098,10 @@ window.Firebase = {
   resetLocalPlayerSessionKeys,
   saveWithdrawalToCloud,
   listenToCloudWithdrawals,
+  saveFeedbackToCloud,
+  listenToCloudFeedbacks,
+  deleteFeedbackFromCloud,
+  clearAllFeedbacksInCloud,
   saveAdConfigToCloud,
   listenToCloudAdConfig,
   registerReferralCodeInCloud,
@@ -4145,12 +5117,123 @@ window.Firebase = {
   atomicBalanceMutation,
   processWithdrawalDecisionInCloud,
   updateWithdrawalDeliveryInCloud,
+  acquireSingleAdminLock,
+  heartbeatSingleAdminLock,
+  releaseSingleAdminLock,
+  listenToAdminLock,
+  cacheCompactUsersSummary,
   openBalanceManageModal,
   closeBalanceManageModal,
   TICKET_TO_STAR_PACKAGES,
   getStarCostForTickets,
-  getTicketsForStars
+  getTicketsForStars,
+  isPlayerNameTaken,
+  openFirstTimeUsernamePopup
 };
+
+async function isPlayerNameTaken(candidateName, excludeUid = '') {
+  const clean = String(candidateName || '').trim().toLowerCase();
+  if (!clean || clean === 'player' || clean === 'task earner') return true;
+  const ex = String(excludeUid || localStorage.getItem('player_uid') || '').trim();
+  try {
+    const rawUsers = localStorage.getItem('task_game_users');
+    const localList = rawUsers ? JSON.parse(rawUsers) : [];
+    if (Array.isArray(localList)) {
+      const hit = localList.some(u => u && String(u.id || u.uid || '') !== ex && String(u.name || u.displayName || '').trim().toLowerCase() === clean);
+      if (hit) return true;
+    }
+  } catch (e) {}
+  if (db && !isFirestoreQuotaBlocked()) {
+    try {
+      // Indexed 1-2 doc lookup scales cleanly past 10,000+ users without full collection download
+      const q = query(collection(db, 'users'), where('displayNameLower', '==', clean), limit(3));
+      const snap = await getDocs(q);
+      let taken = false;
+      snap.forEach((docSnap) => {
+        const d = docSnap.data() || {};
+        const docUid = String(docSnap.id || d.uid || d.id || '');
+        if (docUid !== ex) taken = true;
+      });
+      if (taken) return true;
+    } catch (e) {
+      markFirestoreQuotaBlocked(e);
+    }
+  }
+  return false;
+}
+
+function openFirstTimeUsernamePopup() {
+  if (document.getElementById('firstTimePlayerNameModal')) return;
+  const overlay = document.createElement('div');
+  overlay.id = 'firstTimePlayerNameModal';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(3,8,22,0.88);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:1rem;';
+  const curName = localStorage.getItem('player_username') || '';
+  const prefill = (curName && curName.toLowerCase() !== 'player' && curName.toLowerCase() !== 'task earner') ? curName : '';
+  overlay.innerHTML = `
+    <div style="width:100%;max-width:380px;background:linear-gradient(175deg,#0e1e47 0%,#060e24 100%);border:1.5px solid rgba(56,189,248,0.5);border-radius:18px;padding:1.25rem;box-shadow:0 16px 40px rgba(0,0,0,0.8);color:#fff;font-family:inherit;">
+      <div style="font-size:1.05rem;font-weight:900;color:#38bdf8;margin-bottom:0.35rem;">👋 Welcome! Set Your Player Name</div>
+      <div style="font-size:0.76rem;color:#94a3b8;margin-bottom:0.85rem;">Enter a unique player name. Duplicate names already used in the game are not allowed.</div>
+      <form id="firstTimePlayerNameForm">
+        <input type="text" id="firstTimePlayerNameInput" value="${prefill.replace(/"/g, '&quot;')}" placeholder="Enter unique player name..." maxlength="24" required style="width:100%;box-sizing:border-box;padding:0.65rem 0.85rem;border-radius:10px;border:1.5px solid rgba(56,189,248,0.4);background:#040b1d;color:#fff;font-weight:800;font-size:0.9rem;outline:none;margin-bottom:0.5rem;" />
+        <div id="firstTimePlayerNameErr" style="display:none;font-size:0.74rem;color:#f87171;font-weight:700;margin-bottom:0.5rem;"></div>
+        <button type="submit" id="btnFirstTimePlayerNameSave" style="width:100%;padding:0.7rem;border-radius:10px;border:none;background:linear-gradient(135deg,#0ea5e9,#0284c7);color:#fff;font-weight:900;font-size:0.88rem;cursor:pointer;">Verify &amp; Start Playing ✓</button>
+      </form>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  const form = document.getElementById('firstTimePlayerNameForm');
+  const input = document.getElementById('firstTimePlayerNameInput');
+  const errEl = document.getElementById('firstTimePlayerNameErr');
+  const btn = document.getElementById('btnFirstTimePlayerNameSave');
+  if (input) setTimeout(() => input.focus(), 50);
+  if (form) {
+    form.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const val = (input?.value || '').trim();
+      if (!val || val.length < 2 || val.toLowerCase() === 'player' || val.toLowerCase() === 'task earner') {
+        if (errEl) { errEl.style.display = 'block'; errEl.textContent = '❌ Please enter a valid unique name (at least 2 characters).'; }
+        return;
+      }
+      if (btn) { btn.disabled = true; btn.textContent = 'Verifying...'; }
+      const uid = getEffectivePlayerUid();
+      const taken = await isPlayerNameTaken(val, uid);
+      if (taken) {
+        if (errEl) { errEl.style.display = 'block'; errEl.textContent = `❌ "${val}" is already used by another player. Choose a different name.`; }
+        if (btn) { btn.disabled = false; btn.textContent = 'Verify & Start Playing ✓'; }
+        return;
+      }
+      localStorage.setItem('player_username', val);
+      localStorage.setItem('player_username_confirmed', 'true');
+      if (!localStorage.getItem('player_avatar')) localStorage.setItem('player_avatar', '⚡');
+      try {
+        const rawU = localStorage.getItem('task_game_users');
+        const list = rawU ? JSON.parse(rawU) : [];
+        if (Array.isArray(list)) {
+          const idx = list.findIndex(u => u && String(u.id) === String(uid));
+          if (idx !== -1) list[idx].name = val;
+          else list.push({ id: uid, name: val, avatar: localStorage.getItem('player_avatar') || '⚡', username: '@' + val.toLowerCase().replace(/\s+/g, ''), coins: 0, stars: 0, tickets: 0, diamonds: 0, passLevel: 0, eventTasks: 0, totalTasks: 0, status: 'active' });
+          localStorage.setItem('task_game_users', JSON.stringify(list));
+        }
+      } catch (e) {}
+      saveCurrentProfileToFirestore();
+      updateAllDomBalances();
+      overlay.remove();
+    });
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  // Never show player-name popup on standalone Admin portal
+  if (typeof window !== 'undefined' && /\/admin(\/|$)/i.test(window.location.pathname)) return;
+  const confirmed = localStorage.getItem('player_username_confirmed') === 'true';
+  const curName = (localStorage.getItem('player_username') || '').trim();
+  if (confirmed) return;
+  if (curName && curName.toLowerCase() !== 'player' && curName.toLowerCase() !== 'task earner') {
+    localStorage.setItem('player_username_confirmed', 'true');
+    return;
+  }
+  openFirstTimeUsernamePopup();
+});
 
 // Dispatch global ready event
 window.dispatchEvent(new CustomEvent('firebase:ready', {
@@ -4161,9 +5244,11 @@ export {
   app, 
   analytics, 
   db, 
+  rtdb,
   auth,
   firebaseConfig, 
   firebaseSync,
+  ensureFirebaseAuthReady,
   initCloudBalances,
   getEffectivePlayerUid,
   updateAllDomBalances,
@@ -4184,6 +5269,10 @@ export {
   resetLocalPlayerSessionKeys,
   saveWithdrawalToCloud,
   listenToCloudWithdrawals,
+  saveFeedbackToCloud,
+  listenToCloudFeedbacks,
+  deleteFeedbackFromCloud,
+  clearAllFeedbacksInCloud,
   saveAdConfigToCloud,
   listenToCloudAdConfig,
   registerReferralCodeInCloud,
@@ -4191,11 +5280,26 @@ export {
   redeemReferralCodeInCloud,
   saveGlobalLeaderboardEventToCloud,
   listenToCloudLeaderboardEvent,
+  saveLeaderboardSessionsToCloud,
+  listenToCloudLeaderboardSessions,
+  saveAppSettingsToCloud,
+  listenToAppSettings,
+  getAppSettings,
+  atomicBalanceMutation,
+  processWithdrawalDecisionInCloud,
+  updateWithdrawalDeliveryInCloud,
+  acquireSingleAdminLock,
+  heartbeatSingleAdminLock,
+  releaseSingleAdminLock,
+  listenToAdminLock,
+  cacheCompactUsersSummary,
   openBalanceManageModal,
   closeBalanceManageModal,
   TICKET_TO_STAR_PACKAGES,
   getStarCostForTickets,
-  getTicketsForStars
+  getTicketsForStars,
+  isPlayerNameTaken,
+  openFirstTimeUsernamePopup
 };
 
 

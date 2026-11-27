@@ -17,28 +17,36 @@
   const QUIZ_TIMERS_KEY = 'tap_empire_quiz_timers';
   const CATEGORY_DAILY_COUNTS_KEY = 'tap_empire_category_daily_counts';
   const DAILY_PROGRESSION_KEY = 'tap_empire_daily_progression';
+  const COMMON_COMPLETED_IDS_KEY = 'tap_empire_common_completed_ids';
+  const GOOGLE_COMPLETED_IDS_KEY = 'tap_empire_google_completed_ids';
+  const STAR_UNLOCKED_COSTS_KEY = 'tap_empire_star_unlocked_costs';
+  const ULTRA_UNLOCK_STARS = 1000;
+  const ULTRA_REWARD_STARS = 2000;
+  const ULTRA_DURATION_MS = 24 * 3600 * 1000;
   const VIP_PLAN_KEY = 'tap_empire_vip_plan';
   const SYNC_CHANNEL_NAME = 'nova_task_sync';
 
   const CATEGORY_META = {
-    common: { key: 'common', title: 'Common Tasks', icon: '📋', color: '#38bdf8', emptyHint: 'Ask Admin to add Common Tasks.' },
+    common: { key: 'common', title: 'Common Tasks', icon: '🎟️', color: '#38bdf8', emptyHint: 'Ask Admin to add Common Tasks.' },
     simple: { key: 'simple', title: 'Coin Tasks', icon: '🪙', color: '#60a5fa', emptyHint: 'Ask Admin to add Coin Tasks.' },
-    star: { key: 'star', title: 'Star VIP Tasks', icon: '⭐', color: '#c084fc', emptyHint: 'Ask Admin to add VIP Star Tasks.' },
+    star: { key: 'star', title: 'Star Tasks', icon: '⭐', color: '#c084fc', emptyHint: 'Complete 2 Google Form Tasks per Star Task unlock!' },
     pro: { key: 'pro', title: 'Pro Tasks (3-Pack)', icon: '💎', color: '#34d399', emptyHint: 'Ask Admin to publish a Pro 3-Task Group.' },
     ultra: { key: 'ultra', title: 'Ultra Tasks', icon: '⚡', color: '#facc15', emptyHint: 'Ask Admin to add Ultra Tasks.' },
-    quiz: { key: 'quiz', title: 'Quiz Tasks', icon: '🧠', color: '#10b981', emptyHint: 'Ask Admin to add Quiz Tasks.' }
+    quiz: { key: 'quiz', title: 'Quiz Tasks', icon: '🧠', color: '#10b981', emptyHint: 'Ask Admin to add Quiz Tasks.' },
+    diamond: { key: 'diamond', title: 'Diamond Tasks', icon: '💎', color: '#22d3ee', emptyHint: 'Ask Admin to add Diamond Tasks.' },
+    google: { key: 'google', title: 'Google Form Tasks', icon: '📝', color: '#818cf8', emptyHint: 'Ask Admin to add Google Form Tasks.' }
   };
 
   // Image 8 Tab-Wise Color Palette (single source of truth across Tasks, Cards, Progress Bars)
   const CATEGORY_THEMES = {
     common: {
-      accent: '#38bdf8',
-      border: 'rgba(56, 189, 248, 0.55)',
-      cardBg: 'linear-gradient(135deg, rgba(8, 47, 73, 0.92) 0%, rgba(3, 25, 45, 0.96) 100%)',
-      btnBg: 'linear-gradient(135deg, #0284c7 0%, #0ea5e9 100%)',
-      barBg: 'linear-gradient(90deg, #38bdf8 0%, #0ea5e9 100%)',
-      pillBg: 'rgba(56, 189, 248, 0.18)',
-      glow: '0 6px 20px rgba(0, 0, 0, 0.45), 0 0 18px rgba(56, 189, 248, 0.22)'
+      accent: '#7dd3fc',
+      border: 'rgba(125, 211, 252, 0.65)',
+      cardBg: 'linear-gradient(145deg, rgba(10, 42, 82, 0.94) 0%, rgba(5, 22, 50, 0.97) 100%)',
+      btnBg: 'linear-gradient(135deg, #0284c7 0%, #38bdf8 100%)',
+      barBg: 'linear-gradient(90deg, #7dd3fc 0%, #0ea5e9 100%)',
+      pillBg: 'rgba(56, 189, 248, 0.2)',
+      glow: '0 6px 20px rgba(0, 0, 0, 0.45), 0 0 20px rgba(56, 189, 248, 0.25)'
     },
     simple: {
       accent: '#60a5fa',
@@ -84,6 +92,24 @@
       barBg: 'linear-gradient(90deg, #10b981 0%, #34d399 100%)',
       pillBg: 'rgba(16, 185, 129, 0.2)',
       glow: '0 6px 20px rgba(0, 0, 0, 0.45), 0 0 18px rgba(16, 185, 129, 0.28)'
+    },
+    diamond: {
+      accent: '#22d3ee',
+      border: 'rgba(34, 211, 238, 0.62)',
+      cardBg: 'linear-gradient(135deg, rgba(8, 51, 68, 0.95) 0%, rgba(6, 24, 48, 0.98) 100%)',
+      btnBg: 'linear-gradient(135deg, #06b6d4 0%, #0284c7 100%)',
+      barBg: 'linear-gradient(90deg, #22d3ee 0%, #38bdf8 100%)',
+      pillBg: 'rgba(34, 211, 238, 0.2)',
+      glow: '0 6px 20px rgba(0, 0, 0, 0.45), 0 0 20px rgba(34, 211, 238, 0.32)'
+    },
+    google: {
+      accent: '#818cf8',
+      border: 'rgba(129, 140, 248, 0.62)',
+      cardBg: 'linear-gradient(135deg, rgba(49, 46, 129, 0.95) 0%, rgba(17, 24, 62, 0.98) 100%)',
+      btnBg: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+      barBg: 'linear-gradient(90deg, #818cf8 0%, #6366f1 100%)',
+      pillBg: 'rgba(129, 140, 248, 0.22)',
+      glow: '0 6px 20px rgba(0, 0, 0, 0.45), 0 0 20px rgba(99, 102, 241, 0.34)'
     }
   };
 
@@ -125,10 +151,10 @@
     }
     const raw = safeJsonParse(localStorage.getItem('tap_empire_app_settings'), {});
     return {
-      categoryLimits: { common: 10, simple: 10, star: 10, pro: 3, ultra: 5, quiz: 30, ...(raw.categoryLimits || {}) },
+      categoryLimits: { common: 10, simple: 10, star: 10, pro: 3, ultra: 5, quiz: 30, diamond: 10, google: 10, ...(raw.categoryLimits || {}) },
       vipPlan: { costStars: 1000, dailyTasksLimit: 10, durationDays: 30, enabled: true, restrictions: '1,000 Stars for 10 tasks/day.', ...(raw.vipPlan || {}) },
       proGroup: { costAmount: 5000, costCurrency: 'coins', timerMinutes: 1440, dailyLimit: 3, active: true, ...(raw.proGroup || {}) },
-      dailyProgression: { freeTasksPerDay: 10, dailyIncrement: 10, allowAdExtraTasks: true, adExtraTaskCount: 5, ...(raw.dailyProgression || {}) },
+      dailyProgression: { freeTasksPerDay: 10, dailyIncrement: 10, allowAdExtraTasks: true, adExtraTaskCount: 20, ...(raw.dailyProgression || {}) },
       eventLevels: Array.isArray(raw.eventLevels) ? raw.eventLevels : []
     };
   }
@@ -141,6 +167,8 @@
     if (c === 'pro' || c === 'elite' || c === 'event') return 'pro';
     if (c === 'ultra' || c === 'mega') return 'ultra';
     if (c === 'quiz') return 'quiz';
+    if (c === 'diamond' || c === 'diamonds') return 'diamond';
+    if (c === 'google' || c === 'google_form' || c === 'google-form' || c === 'googleform' || c === 'form') return 'google';
     return 'simple';
   }
 
@@ -184,24 +212,64 @@
   function getCategoryDailyState() {
     const today = getTodayKey();
     const stored = safeJsonParse(localStorage.getItem(CATEGORY_DAILY_COUNTS_KEY), {});
+    const emptyBuckets = () => ({ common: {}, simple: {}, star: {}, pro: {}, ultra: {}, quiz: {}, diamond: {}, google: {} });
     if (!stored || stored.dateKey !== today) {
       const fresh = {
         dateKey: today,
-        counts: { common: 0, simple: 0, star: 0, pro: 0, ultra: 0, quiz: 0 }
+        counts: { common: 0, simple: 0, star: 0, pro: 0, ultra: 0, quiz: 0, diamond: 0, google: 0 },
+        openedIds: emptyBuckets(),
+        verifiedIds: emptyBuckets()
       };
       localStorage.setItem(CATEGORY_DAILY_COUNTS_KEY, JSON.stringify(fresh));
       return fresh;
     }
     return {
       dateKey: today,
-      counts: { common: 0, simple: 0, star: 0, pro: 0, ultra: 0, quiz: 0, ...(stored.counts || {}) }
+      counts: { common: 0, simple: 0, star: 0, pro: 0, ultra: 0, quiz: 0, diamond: 0, google: 0, ...(stored.counts || {}) },
+      openedIds: { ...emptyBuckets(), ...(stored.openedIds || {}) },
+      verifiedIds: { ...emptyBuckets(), ...(stored.verifiedIds || {}) }
     };
   }
 
-  function incrementCategoryDailyCount(catKey) {
+  function recomputeDailyCategoryCount(state, catKey) {
+    const k = normalizeCategory(catKey);
+    const openedSet = (state.openedIds && state.openedIds[k]) || {};
+    const verifiedSet = (state.verifiedIds && state.verifiedIds[k]) || {};
+    const uniqueCount = new Set([...Object.keys(openedSet), ...Object.keys(verifiedSet)]).size;
+    const prevCount = parseInt(state.counts[k] || '0', 10) || 0;
+    state.counts[k] = Math.max(uniqueCount, prevCount);
+    return state;
+  }
+
+  function recordCategoryTaskOpened(catKey, taskId) {
     const state = getCategoryDailyState();
     const k = normalizeCategory(catKey);
-    state.counts[k] = (parseInt(state.counts[k] || '0', 10) || 0) + 1;
+    if (!state.openedIds[k]) state.openedIds[k] = {};
+    if (!state.openedIds[k][taskId]) {
+      state.openedIds[k][taskId] = Date.now();
+      const prevCount = parseInt(state.counts[k] || '0', 10) || 0;
+      const hadVerified = !!(state.verifiedIds && state.verifiedIds[k] && state.verifiedIds[k][taskId]);
+      if (!hadVerified) {
+        state.counts[k] = prevCount + 1;
+      }
+      recomputeDailyCategoryCount(state, k);
+      localStorage.setItem(CATEGORY_DAILY_COUNTS_KEY, JSON.stringify(state));
+    }
+    return state;
+  }
+
+  function incrementCategoryDailyCount(catKey, taskId) {
+    const state = getCategoryDailyState();
+    const k = normalizeCategory(catKey);
+    if (!state.verifiedIds[k]) state.verifiedIds[k] = {};
+    const alreadyCountedByOpen = !!(taskId && state.openedIds && state.openedIds[k] && state.openedIds[k][taskId]);
+    if (taskId) {
+      state.verifiedIds[k][taskId] = Date.now();
+    }
+    if (!alreadyCountedByOpen) {
+      state.counts[k] = (parseInt(state.counts[k] || '0', 10) || 0) + 1;
+    }
+    recomputeDailyCategoryCount(state, k);
     localStorage.setItem(CATEGORY_DAILY_COUNTS_KEY, JSON.stringify(state));
     return state;
   }
@@ -240,7 +308,10 @@
       localStorage.setItem(DAILY_PROGRESSION_KEY, JSON.stringify(st));
     }
 
-    localStorage.setItem('user_streak_days', String(st.streakDays || 1));
+    const claimedDailyRaw = localStorage.getItem('task_daily_streak_count');
+    const claimedDaily = Math.max(0, parseInt(claimedDailyRaw || '0', 10) || 0);
+    localStorage.setItem('user_streak_days', String(claimedDaily));
+    localStorage.setItem('task_game_streak_days', String(claimedDaily));
     return st;
   }
 
@@ -248,12 +319,12 @@
     const settings = getSettings();
     const cfg = settings.dailyProgression || {};
     if (cfg.allowAdExtraTasks === false) return 0;
-    const bonus = Math.max(1, parseInt(cfg.adExtraTaskCount || '5', 10) || 5);
+    const bonus = Math.max(1, parseInt(cfg.adExtraTaskCount || '20', 10) || 20);
     const st = getDailyProgressionState();
     st.adExtraUnlockedToday = (parseInt(st.adExtraUnlockedToday || '0', 10) || 0) + bonus;
     localStorage.setItem(DAILY_PROGRESSION_KEY, JSON.stringify(st));
     syncUserStateToCloud();
-    return st.adExtraUnlockedToday;
+    return bonus;
   }
 
   // VIP Star Plan State (Midnight Local Reset & Configurable Cost/Daily Limit/Duration)
@@ -409,8 +480,6 @@
     if (cat === 'common') {
       const prog = getDailyProgressionState();
       limit = Math.max(limit, parseInt(prog.todayQuota || '10', 10) || 10) + (parseInt(prog.adExtraUnlockedToday || '0', 10) || 0);
-    } else if (cat === 'star') {
-      limit = Math.max(1, parseInt((settings.vipPlan && settings.vipPlan.dailyTasksLimit) || limit, 10) || 10);
     } else if (cat === 'pro') {
       limit = Math.max(1, parseInt((settings.proGroup && settings.proGroup.dailyLimit) || limit, 10) || 3);
     } else if (cat === 'quiz') {
@@ -442,10 +511,115 @@
     return { currency: 'coins', icon: '🪙', label: 'Coins', amount: val };
   }
 
+  function getCommonCompletedCount() {
+    const completedMap = getCompletedMap();
+    const storedSet = safeJsonParse(localStorage.getItem(COMMON_COMPLETED_IDS_KEY), {});
+    const commonIds = new Set(Object.keys(storedSet && typeof storedSet === 'object' ? storedSet : {}));
+    const commonTasks = getStoredTasks().filter(t => normalizeCategory(t.category, t) === 'common');
+    commonTasks.forEach(t => {
+      if (completedMap[t.id]) commonIds.add(t.id);
+    });
+    // Also count legacy task_common_* keys in completedMap in case tasks were archived/rotated
+    Object.keys(completedMap).forEach(id => {
+      if (completedMap[id] && String(id).includes('_common_')) commonIds.add(id);
+    });
+    return commonIds.size;
+  }
+
+  function recordCommonCompletedId(taskId) {
+    if (!taskId) return;
+    const stored = safeJsonParse(localStorage.getItem(COMMON_COMPLETED_IDS_KEY), {});
+    const map = (stored && typeof stored === 'object') ? stored : {};
+    map[taskId] = Date.now();
+    localStorage.setItem(COMMON_COMPLETED_IDS_KEY, JSON.stringify(map));
+  }
+
+  function getGoogleCompletedIds() {
+    const completedMap = getCompletedMap();
+    const rawList = safeJsonParse(localStorage.getItem(GOOGLE_COMPLETED_IDS_KEY), []);
+    const idSet = new Set(Array.isArray(rawList) ? rawList.filter(Boolean).map(String) : []);
+    getStoredTasks()
+      .filter(t => normalizeCategory(t.category, t) === 'google')
+      .forEach(t => {
+        if (completedMap[t.id]) idSet.add(String(t.id));
+      });
+    Object.keys(completedMap).forEach(id => {
+      if (completedMap[id] && String(id).includes('_google_')) idSet.add(String(id));
+    });
+    return Array.from(idSet);
+  }
+
+  function getGoogleCompletedCount() {
+    return getGoogleCompletedIds().length;
+  }
+
+  function recordGoogleCompletedId(taskId) {
+    if (!taskId) return;
+    const rawList = safeJsonParse(localStorage.getItem(GOOGLE_COMPLETED_IDS_KEY), []);
+    const idSet = new Set(Array.isArray(rawList) ? rawList.filter(Boolean).map(String) : []);
+    idSet.add(String(taskId));
+    localStorage.setItem(GOOGLE_COMPLETED_IDS_KEY, JSON.stringify(Array.from(idSet)));
+  }
+
+  function getStarUnlockedCostsMap() {
+    const raw = safeJsonParse(localStorage.getItem(STAR_UNLOCKED_COSTS_KEY), {});
+    return (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
+  }
+
+  function saveStarUnlockedCostsMap(map) {
+    localStorage.setItem(STAR_UNLOCKED_COSTS_KEY, JSON.stringify(map || {}));
+  }
+
+  function getStarRequiredGoogleCount(task) {
+    const settings = getSettings();
+    const globalReq = Math.max(1, parseInt((settings.starUnlock && settings.starUnlock.googleTasksPerUnlock) || '2', 10) || 2);
+    if (!task) return globalReq;
+    if (task.customGoogleReq) {
+      const raw = parseInt(task.googleFormRequired !== undefined ? task.googleFormRequired : task.requiredGoogleTasks, 10);
+      if (!isNaN(raw) && raw >= 1) return raw;
+    }
+    return globalReq;
+  }
+
+  function getStarUnlockProgress() {
+    const settings = getSettings();
+    const globalReq = Math.max(1, parseInt((settings.starUnlock && settings.starUnlock.googleTasksPerUnlock) || '2', 10) || 2);
+    const googleDone = getGoogleCompletedCount();
+    const costsMap = getStarUnlockedCostsMap();
+    const spentGoogleCredits = Object.values(costsMap).reduce((sum, v) => {
+      const n = parseInt(v, 10);
+      return sum + (isNaN(n) ? 0 : Math.max(0, n));
+    }, 0);
+    const availableGoogleCredits = Math.max(0, googleDone - spentGoogleCredits);
+    const availableUnlocks = Math.floor(availableGoogleCredits / globalReq);
+    return {
+      googleDone,
+      spentGoogleCredits,
+      availableGoogleCredits,
+      globalReq,
+      availableUnlocks,
+      unlockedCount: Object.keys(costsMap).length
+    };
+  }
+
+  function getQuizTargetCommonCount(task) {
+    if (!task) return 0;
+    const raw = task.targetCommonTasks !== undefined ? task.targetCommonTasks
+      : (task.commonTarget !== undefined ? task.commonTarget : (task.requiredCommonTasks !== undefined ? task.requiredCommonTasks : 5));
+    const n = parseInt(raw, 10);
+    return isNaN(n) ? 0 : Math.max(0, n);
+  }
+
   function getTaskCostInfo(task) {
     if (!task) return { currency: 'coins', icon: '🪙', label: 'Coins', amount: 0 };
     const cat = normalizeCategory(task.category, task);
-    if (cat === 'common') return { currency: 'coins', icon: '🪙', label: 'Coins', amount: 0 };
+    if (cat === 'common') return { currency: 'coins', icon: '🪙', label: 'Free', amount: 0 };
+    if (cat === 'star') return { currency: 'google_tasks', icon: '📝', label: 'Google Form', amount: getStarRequiredGoogleCount(task) };
+    if (cat === 'ultra') return { currency: 'stars', icon: '⭐', label: 'Stars', amount: ULTRA_UNLOCK_STARS };
+    if (cat === 'quiz') {
+      const qAmt = Math.max(0, parseInt(task.diamondCost !== undefined ? task.diamondCost : (task.unlockCost || '0'), 10) || 0);
+      return qAmt > 0 ? getCurrencyDisplay('diamonds', qAmt) : { currency: 'diamonds', icon: '💎', label: 'Free', amount: 0 };
+    }
 
     if (task.unlockCost !== undefined && task.unlockCost !== null && task.unlockCost !== '') {
       const amt = Math.max(0, parseInt(task.unlockCost, 10) || 0);
@@ -462,26 +636,50 @@
   function getTaskRewardInfo(task) {
     if (!task) return { coins: 0, tickets: 0, stars: 0, diamonds: 0, inr: 0 };
     const cat = normalizeCategory(task.category, task);
-    const coins = parseInt(task.rewardCoins !== undefined ? task.rewardCoins : (task.reward !== undefined ? task.reward : (task.coins || 0)), 10) || 0;
-    const tickets = parseInt(task.rewardTickets !== undefined ? task.rewardTickets : (task.tickets || (cat === 'common' && coins === 0 ? 50 : 0)), 10) || 0;
-    const stars = parseInt(task.rewardStars !== undefined ? task.rewardStars : (task.stars || 0), 10) || 0;
-    const diamonds = parseInt(task.rewardDiamonds || '0', 10) || 0;
-    const inr = parseInt(task.inrReward || '0', 10) || 0;
+    const hasVal = (v) => v !== undefined && v !== null && v !== '';
+    if (cat === 'quiz') return { coins: 0, tickets: 0, stars: 0, diamonds: 0, inr: 0 };
+    if (cat === 'ultra') return { coins: 0, tickets: 0, stars: ULTRA_REWARD_STARS, diamonds: 0, inr: 0 };
+    if (cat === 'diamond' || cat === 'google') {
+      const dRaw = hasVal(task.rewardDiamonds) ? task.rewardDiamonds : (hasVal(task.diamondReward) ? task.diamondReward : 1);
+      return { coins: 0, tickets: 0, stars: 0, diamonds: Math.max(1, parseInt(dRaw, 10) || 1), inr: 0 };
+    }
+
+    const rawStars = hasVal(task.rewardStars) ? task.rewardStars : (hasVal(task.stars) ? task.stars : 0);
+    const stars = Math.max(0, parseInt(rawStars, 10) || 0);
+    if (cat === 'star') {
+      return { coins: 0, tickets: 0, stars, diamonds: 0, inr: 0 };
+    }
+
+    const rawCoins = hasVal(task.rewardCoins) ? task.rewardCoins
+      : (hasVal(task.bonusCoins) ? task.bonusCoins
+      : (hasVal(task.reward) ? task.reward
+      : (hasVal(task.coins) ? task.coins : 0)));
+    const coins = Math.max(0, parseInt(rawCoins, 10) || 0);
+
+    const rawTickets = hasVal(task.rewardTickets) ? task.rewardTickets
+      : (hasVal(task.ticketReward) ? task.ticketReward
+      : (hasVal(task.tickets) ? task.tickets : (cat === 'common' && coins === 0 ? 50 : 0)));
+    const tickets = Math.max(0, parseInt(rawTickets, 10) || 0);
+
+    const diamonds = Math.max(0, parseInt(task.rewardDiamonds || '0', 10) || 0);
+    const inr = Math.max(0, parseInt(task.inrReward || '0', 10) || 0);
     return { coins, tickets, stars, diamonds, inr };
   }
 
-  function formatRewardParts(rew) {
+  function formatRewardParts(rew, task) {
+    const cat = task ? normalizeCategory(task.category, task) : '';
+    if (cat === 'quiz') return '🧠 Challenge (No Coin Reward)';
     const parts = [];
     if (rew.coins > 0) parts.push(`🪙 +${rew.coins.toLocaleString()}`);
     if (rew.tickets > 0) parts.push(`🎟️ +${rew.tickets.toLocaleString()}`);
     if (rew.stars > 0) parts.push(`⭐ +${rew.stars.toLocaleString()}`);
     if (rew.diamonds > 0) parts.push(`💎 +${rew.diamonds.toLocaleString()}`);
-    if (rew.inr > 0) parts.push(`₹${rew.inr.toLocaleString()} Gift Card`);
     return parts.length > 0 ? parts.join(' • ') : 'Free Mission';
   }
 
   function getTaskTimingStatus(task) {
     const now = Date.now();
+    const cat = normalizeCategory(task.category, task);
     const startMs = task.startDateTime ? new Date(task.startDateTime).getTime() : (task.eventStartTime ? Number(task.eventStartTime) : 0);
     const endMs = task.endDateTime ? new Date(task.endDateTime).getTime() : (task.eventEndTime ? Number(task.eventEndTime) : 0);
 
@@ -492,10 +690,24 @@
       return { status: 'expired', expiredAgoMs: now - endMs, endMs };
     }
 
-    // Quiz / Opened-task countdown timer check
+    // Ultra 24-hour expiry timer starts strictly upon Player Unlock
+    if (cat === 'ultra') {
+      const unlockedMap = getUnlockedMap();
+      const u = unlockedMap[task.id];
+      const completedMap = getCompletedMap();
+      if (u && !completedMap[task.id]) {
+        const exp = Number(u.expiresAt || (Number(u.unlockedAt || 0) + ULTRA_DURATION_MS));
+        if (exp > 0 && now >= exp) {
+          return { status: 'expired', expiredAgoMs: now - exp, endMs: exp };
+        }
+        return { status: 'active', endMs: exp, countdownSec: 86400 };
+      }
+      return { status: 'active', endMs: 0, countdownSec: 86400, startsOnUnlock: true };
+    }
+
+    // Quiz countdown timer check after Open
     const openedMap = getOpenedMap();
     const opened = openedMap[task.id];
-    const cat = normalizeCategory(task.category, task);
     const countdownSec = parseInt(task.countdownSeconds || task.expirySeconds || (cat === 'quiz' ? (task.timerDurationSec || task.timer || 0) : 0), 10) || 0;
     if (cat === 'quiz' && opened && opened.expiresAt && now > Number(opened.expiresAt)) {
       return { status: 'expired', expiredAgoMs: now - Number(opened.expiresAt), endMs: Number(opened.expiresAt) };
@@ -508,7 +720,7 @@
     };
   }
 
-  // Pro 3-in-1 Group Helpers
+  // Pro 3-in-1 Group Helpers (Supports 1 or multiple 3-task packages cleanly)
   function getProGroupStateMap() {
     const m = safeJsonParse(localStorage.getItem(PRO_GROUP_STATE_KEY), {});
     return (m && typeof m === 'object') ? m : {};
@@ -518,49 +730,63 @@
     localStorage.setItem(PRO_GROUP_STATE_KEY, JSON.stringify(m));
   }
 
-  function buildProGroupBundle() {
+  function buildProGroupBundles() {
     const settings = getSettings();
     const proCfg = settings.proGroup || {};
     const allPro = getStoredTasks().filter(t => normalizeCategory(t.category, t) === 'pro');
-    const groupTasks = allPro.slice(0, 3);
-    if (groupTasks.length === 0) return null;
+    if (allPro.length === 0) return [];
 
-    const refTask = groupTasks[0];
-    const groupId = refTask.groupId || refTask.packId || 'pro_default_group';
-    const costAmount = (refTask.groupCostAmount !== undefined && refTask.groupCostAmount !== '')
-      ? Math.max(0, parseInt(refTask.groupCostAmount, 10) || 0)
-      : Math.max(0, parseInt(proCfg.costAmount || '0', 10) || 0);
-    const costCurrency = refTask.groupCostCurrency || proCfg.costCurrency || 'coins';
-    const costInfo = getCurrencyDisplay(costCurrency, costAmount);
+    const packMap = new Map();
+    allPro.forEach(t => {
+      const gid = t.eventPackId || t.groupId || 'pro_default_group';
+      if (!packMap.has(gid)) packMap.set(gid, []);
+      packMap.get(gid).push(t);
+    });
 
     const stateMap = getProGroupStateMap();
-    const grpState = stateMap[groupId] || null;
+    const bundles = [];
+    packMap.forEach((packTasks, groupId) => {
+      const groupTasks = packTasks.slice(0, 3);
+      const refTask = groupTasks[0];
+      const costAmount = (refTask.groupCostAmount !== undefined && refTask.groupCostAmount !== '')
+        ? Math.max(0, parseInt(refTask.groupCostAmount, 10) || 0)
+        : Math.max(0, parseInt(proCfg.costAmount || '0', 10) || 0);
+      const costCurrency = refTask.groupCostCurrency || proCfg.costCurrency || 'coins';
+      const costInfo = getCurrencyDisplay(costCurrency, costAmount);
+      const grpState = stateMap[groupId] || null;
 
-    // Resolve shared countdown expiry (only ONE active timer for the entire group!)
-    let sharedEndMs = 0;
-    if (refTask.eventEndTime && Number(refTask.eventEndTime) > 0) {
-      sharedEndMs = Number(refTask.eventEndTime);
-    } else if (refTask.endDateTime) {
-      const parsedEnd = new Date(refTask.endDateTime).getTime();
-      if (!isNaN(parsedEnd)) sharedEndMs = parsedEnd;
-    } else if (grpState && grpState.expiresAt) {
-      sharedEndMs = Number(grpState.expiresAt);
-    }
+      let sharedEndMs = 0;
+      if (refTask.eventEndTime && Number(refTask.eventEndTime) > 0) {
+        sharedEndMs = Number(refTask.eventEndTime);
+      } else if (refTask.endDateTime) {
+        const parsedEnd = new Date(refTask.endDateTime).getTime();
+        if (!isNaN(parsedEnd)) sharedEndMs = parsedEnd;
+      } else if (grpState && grpState.expiresAt) {
+        sharedEndMs = Number(grpState.expiresAt);
+      }
 
-    const durationMinutes = Math.max(1, parseInt(refTask.timerMinutes || proCfg.timerMinutes || '1440', 10) || 1440);
-    const isUnlocked = costAmount <= 0 || !!(grpState && grpState.unlocked);
-    const isExpired = sharedEndMs > 0 && Date.now() >= sharedEndMs;
+      const durationMinutes = Math.max(1, parseInt(refTask.timerMinutes || proCfg.timerMinutes || '1440', 10) || 1440);
+      const isUnlocked = costAmount <= 0 || !!(grpState && grpState.unlocked);
+      const isExpired = sharedEndMs > 0 && Date.now() >= sharedEndMs;
 
-    return {
-      groupId,
-      tasks: groupTasks,
-      costInfo,
-      durationMinutes,
-      sharedEndMs,
-      isUnlocked,
-      isExpired,
-      active: proCfg.active !== false
-    };
+      bundles.push({
+        groupId,
+        tasks: groupTasks,
+        costInfo,
+        durationMinutes,
+        sharedEndMs,
+        isUnlocked,
+        isExpired,
+        active: proCfg.active !== false
+      });
+    });
+
+    return bundles;
+  }
+
+  function buildProGroupBundle() {
+    const bundles = buildProGroupBundles();
+    return bundles[0] || null;
   }
 
   async function unlockProGroup(groupId, costAmount, costCurrency, durationMinutes) {
@@ -610,6 +836,39 @@
   async function unlockSingleTask(taskId) {
     const task = getStoredTasks().find(t => t.id === taskId);
     if (!task) return false;
+    const cat = normalizeCategory(task.category, task);
+    if (cat === 'star') {
+      const unlockedMap = getUnlockedMap();
+      if (unlockedMap[taskId]) return true;
+      const gReq = getStarRequiredGoogleCount(task);
+      const starProg = getStarUnlockProgress();
+      if (starProg.availableGoogleCredits < gReq) {
+        const missing = gReq - starProg.availableGoogleCredits;
+        alert(`🔒 Google Form Tasks Required!\nComplete ${missing} more Google Form Task(s) to unlock this Star Task (${starProg.availableGoogleCredits}/${gReq} credits ready).`);
+        return false;
+      }
+      const costsMap = getStarUnlockedCostsMap();
+      costsMap[taskId] = gReq;
+      saveStarUnlockedCostsMap(costsMap);
+      unlockedMap[taskId] = {
+        unlockedAt: Date.now(),
+        expiresAt: 0,
+        currency: 'google_tasks',
+        amount: gReq
+      };
+      saveUnlockedMap(unlockedMap);
+      syncUserStateToCloud();
+      refreshAllTaskViews();
+      return true;
+    }
+    if (cat === 'quiz') {
+      const targetCommon = getQuizTargetCommonCount(task);
+      const commonDone = getCommonCompletedCount();
+      if (commonDone < targetCommon) {
+        alert(`🔒 Step 1 Required!\nComplete ${targetCommon} Common Tasks first before unlocking this Quiz Task (${commonDone}/${targetCommon} completed).`);
+        return false;
+      }
+    }
     const cost = getTaskCostInfo(task);
     const unlockedMap = getUnlockedMap();
     if (unlockedMap[taskId] || cost.amount <= 0) return true;
@@ -619,7 +878,8 @@
       alert(`❌ Insufficient ${cost.label}! Need ${cost.icon} ${cost.amount.toLocaleString()} (Available: ${bal.toLocaleString()}).`);
       return false;
     }
-    if (!confirm(`🔓 Unlock "${task.title || 'Mission'}" for ${cost.icon} ${cost.amount.toLocaleString()} ${cost.label}?`)) {
+    const extraWarn = cat === 'ultra' ? '\n\n⏱️ 24-Hour Timer starts immediately upon unlock! Unfinished tasks auto-remove after 24h.' : '';
+    if (!confirm(`🔓 Unlock "${task.title || 'Mission'}" for ${cost.icon} ${cost.amount.toLocaleString()} ${cost.label}?${extraWarn}`)) {
       return false;
     }
 
@@ -642,7 +902,13 @@
       if (r === false) return false;
     }
 
-    unlockedMap[taskId] = { unlockedAt: Date.now(), currency: cost.currency, amount: cost.amount };
+    const now = Date.now();
+    unlockedMap[taskId] = {
+      unlockedAt: now,
+      expiresAt: cat === 'ultra' ? (now + ULTRA_DURATION_MS) : 0,
+      currency: cost.currency,
+      amount: cost.amount
+    };
     saveUnlockedMap(unlockedMap);
     syncUserStateToCloud();
     refreshAllTaskViews();
@@ -665,34 +931,69 @@
     }
 
     const cat = normalizeCategory(task.category, task);
+    if (cat === 'star') {
+      const unlockedMap = getUnlockedMap();
+      if (!unlockedMap[taskId]) {
+        const gReq = getStarRequiredGoogleCount(task);
+        const starProg = getStarUnlockProgress();
+        alert(`🔒 Star Task Locked!\nComplete ${Math.max(0, gReq - starProg.availableGoogleCredits)} more Google Form Task(s) and click Unlock first.`);
+        return;
+      }
+    }
+    if (cat === 'quiz') {
+      const targetCommon = getQuizTargetCommonCount(task);
+      const commonDone = getCommonCompletedCount();
+      if (commonDone < targetCommon) {
+        alert(`🔒 Step 1 Required: Complete ${targetCommon} Common Tasks first (${commonDone}/${targetCommon}).`);
+        return;
+      }
+      const cost = getTaskCostInfo(task);
+      const unlockedMap = getUnlockedMap();
+      if (cost.amount > 0 && !unlockedMap[taskId]) {
+        alert(`🔒 Step 2 Required: Unlock with ${cost.icon} ${cost.amount.toLocaleString()} ${cost.label}.`);
+        return;
+      }
+    }
+    const dailyState = getCategoryDailyState();
+    const alreadyCountedToday = !!(dailyState.openedIds && dailyState.openedIds[cat] && dailyState.openedIds[cat][taskId]);
     const limitInfo = getCategoryLimitInfo(cat);
-    if (limitInfo.remainingToday <= 0) {
-      alert(`🔒 Daily limit reached for ${CATEGORY_META[cat].title} (${limitInfo.limit}/${limitInfo.limit}).`);
+    const openedMap = getOpenedMap();
+    const existing = openedMap[taskId];
+
+    if (!existing && !alreadyCountedToday && limitInfo.remainingToday <= 0) {
+      if (cat === 'common') {
+        alert(`📺 Daily limit reached (${limitInfo.limit}/${limitInfo.limit}). Tap "Watch Ad (+${Math.max(1, parseInt((getSettings().dailyProgression && getSettings().dailyProgression.adExtraTaskCount) || '20', 10) || 20)} Tasks)" to renew more tasks!`);
+      } else {
+        alert(`🔒 Daily limit reached for ${CATEGORY_META[cat].title} (${limitInfo.limit}/${limitInfo.limit}).`);
+      }
       return;
     }
 
-    const openedMap = getOpenedMap();
+    // Open target URL in a new tab when clicking Open without showing any link text inside task tabs
+    const taskUrl = String(task.url || task.link || '').trim();
+    if (taskUrl && /^https?:\/\//i.test(taskUrl)) {
+      try { window.open(taskUrl, '_blank', 'noopener,noreferrer'); } catch (e) {}
+    }
+
     const now = Date.now();
-    const existing = openedMap[taskId];
-    const waitSec = Math.max(0, parseInt(task.timerSeconds !== undefined ? task.timerSeconds : (task.timer || 0), 10) || 0);
-    const quizExpirySec = cat === 'quiz' ? (parseInt(task.countdownSeconds || task.expirySeconds || task.timerSeconds || task.timer || 300, 10) || 300) : 0;
+    const rawTimer = task.timerDuration !== undefined ? task.timerDuration
+      : (task.timerSeconds !== undefined ? task.timerSeconds : (task.timer !== undefined ? task.timer : 0));
+    const waitSec = cat === 'star' ? 0 : Math.max(0, parseInt(rawTimer, 10) || 0);
+    const quizExpirySec = cat === 'quiz'
+      ? (parseInt(task.countdownSeconds || task.expirySeconds || rawTimer || 300, 10) || 300)
+      : 0;
 
     if (!existing) {
       openedMap[taskId] = {
         openedAt: now,
-        readyAt: now + (cat === 'quiz' ? 0 : waitSec * 1000),
+        readyAt: now + (cat === 'quiz' || cat === 'star' ? 0 : waitSec * 1000),
         expiresAt: quizExpirySec > 0 ? (now + quizExpirySec * 1000) : 0
       };
       saveOpenedMap(openedMap);
     }
 
-    const url = task.url || task.link;
-    if (url && url !== '#') {
-      try {
-        window.open(url, '_blank', 'noopener');
-      } catch (e) {}
-    }
-
+    // Add task open click toward today's Common/category progress count (without double counting)
+    recordCategoryTaskOpened(cat, taskId);
     refreshAllTaskViews();
   }
 
@@ -707,18 +1008,18 @@
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(2,6,23,0.82);backdrop-filter:blur(6px);display:none;align-items:center;justify-content:center;z-index:99999;padding:16px;';
     overlay.onclick = (e) => { if (e.target === overlay) closeVerifyModal(); };
     overlay.innerHTML = `
-      <div style="width:100%;max-width:360px;background:linear-gradient(160deg,#0f172a 0%,#060e24 100%);border:1.5px solid rgba(56,189,248,0.45);border-radius:18px;padding:1.25rem;box-shadow:0 18px 48px rgba(0,0,0,0.8);color:#fff;text-align:center;" onclick="event.stopPropagation()">
+      <form onsubmit="submitTaskVerification(event)" style="width:100%;max-width:360px;background:linear-gradient(160deg,#0f172a 0%,#060e24 100%);border:1.5px solid rgba(56,189,248,0.45);border-radius:18px;padding:1.25rem;box-shadow:0 18px 48px rgba(0,0,0,0.8);color:#fff;text-align:center;" onclick="event.stopPropagation()">
         <div style="font-size:2.4rem;margin-bottom:0.3rem;">🔐</div>
         <h3 id="verifyModalTitle" style="margin:0 0 0.35rem 0;font-size:1.05rem;font-weight:900;color:#fff;">Verify Mission</h3>
         <div id="verifyModalBountyPill" style="display:inline-block;padding:4px 10px;border-radius:999px;background:rgba(56,189,248,0.16);border:1px solid rgba(56,189,248,0.4);color:#38bdf8;font-size:0.76rem;font-weight:800;margin-bottom:0.6rem;">+0</div>
-        <p id="verifyModalDesc" style="margin:0 0 0.75rem 0;font-size:0.78rem;color:#94a3b8;line-height:1.45;">Enter the 6-digit verification code from the completed mission.</p>
-        <input type="text" id="verifyCodeInput" maxlength="6" inputmode="numeric" placeholder="Enter 6-digit code" style="width:100%;box-sizing:border-box;padding:0.65rem 0.85rem;border-radius:10px;border:1.5px solid rgba(56,189,248,0.45);background:#020617;color:#facc15;font-family:monospace;font-size:1.15rem;font-weight:900;letter-spacing:4px;text-align:center;margin-bottom:0.5rem;" />
+        <p id="verifyModalDesc" style="margin:0 0 0.75rem 0;font-size:0.78rem;color:#94a3b8;line-height:1.45;">Enter the verification code configured by Admin to claim your reward.</p>
+        <input type="text" id="verifyCodeInput" maxlength="6" inputmode="numeric" placeholder="Enter 4-6 digit code" style="width:100%;box-sizing:border-box;padding:0.65rem 0.85rem;border-radius:10px;border:1.5px solid rgba(56,189,248,0.45);background:#020617;color:#facc15;font-family:monospace;font-size:1.15rem;font-weight:900;letter-spacing:4px;text-align:center;margin-bottom:0.5rem;" />
         <div id="verifyErrorMsg" style="display:none;color:#f87171;font-size:0.74rem;font-weight:800;margin-bottom:0.5rem;"></div>
         <div style="display:flex;gap:8px;margin-top:0.35rem;">
           <button type="button" onclick="closeVerifyModal()" style="flex:1;padding:0.6rem;border-radius:10px;border:1px solid rgba(148,163,184,0.35);background:rgba(30,41,59,0.8);color:#cbd5e1;font-weight:800;cursor:pointer;">Cancel</button>
-          <button type="button" id="btnVerifyConfirm" onclick="submitTaskVerification()" style="flex:1.4;padding:0.6rem;border-radius:10px;border:none;background:linear-gradient(135deg,#10b981 0%,#059669 100%);color:#fff;font-weight:900;cursor:pointer;">Verify &amp; Claim ✓</button>
+          <button type="submit" id="btnVerifyConfirm" style="flex:1.4;padding:0.6rem;border-radius:10px;border:none;background:linear-gradient(135deg,#10b981 0%,#059669 100%);color:#fff;font-weight:900;cursor:pointer;">Verify &amp; Claim ✓</button>
         </div>
-      </div>
+      </form>
     `;
     document.body.appendChild(overlay);
     return overlay;
@@ -743,7 +1044,9 @@
 
     const cat = normalizeCategory(task.category, task);
     if (cat === 'pro') {
-      const bundle = buildProGroupBundle();
+      const bundles = buildProGroupBundles();
+      const targetPackId = task.eventPackId || task.groupId || 'pro_default_group';
+      const bundle = bundles.find(b => b.groupId === targetPackId) || bundles[0];
       if (bundle && (bundle.isExpired || !bundle.isUnlocked)) {
         alert(bundle.isExpired ? '⌛ Pro group timer expired.' : '🔒 Unlock the Pro Group first.');
         return;
@@ -760,7 +1063,7 @@
 
     const rew = getTaskRewardInfo(task);
     if (titleEl) titleEl.textContent = task.title || 'Verify Mission';
-    if (pillEl) pillEl.textContent = formatRewardParts(rew);
+    if (pillEl) pillEl.textContent = formatRewardParts(rew, task);
     if (codeInput) {
       codeInput.value = '';
       setTimeout(() => codeInput.focus(), 40);
@@ -816,8 +1119,9 @@
     }
     const cat = normalizeCategory(task.category, task);
     if (cat === 'pro') {
-      const bundle = buildProGroupBundle();
-      if (bundle && bundle.isExpired) {
+      const targetPackId = task.eventPackId || task.groupId || 'pro_default_group';
+      const bundle = buildProGroupBundles().find(b => b.groupId === targetPackId) || buildProGroupBundle();
+      if (bundle && (bundle.isExpired || !bundle.isUnlocked)) {
         if (errEl) {
           errEl.style.display = 'block';
           errEl.textContent = '⌛ Pro group countdown expired. No reward awarded.';
@@ -838,8 +1142,10 @@
       return;
     }
 
+    const dailyStateForVerify = getCategoryDailyState();
+    const wasOpenedInQuota = !!(dailyStateForVerify.openedIds && dailyStateForVerify.openedIds[cat] && dailyStateForVerify.openedIds[cat][taskId]);
     const limitInfo = getCategoryLimitInfo(cat);
-    if (limitInfo.remainingToday <= 0) {
+    if (!wasOpenedInQuota && limitInfo.remainingToday <= 0) {
       if (errEl) {
         errEl.style.display = 'block';
         errEl.textContent = `🔒 Daily limit reached (${limitInfo.limit}/${limitInfo.limit}).`;
@@ -850,69 +1156,385 @@
     _verifyBusy = true;
     if (btn) btn.disabled = true;
     try {
-      const rew = getTaskRewardInfo(task);
-      const txId = `task_reward_${taskId}`;
-      const isUltra = cat === 'ultra';
-      if (window.Firebase && typeof window.Firebase.atomicBalanceMutation === 'function') {
-        const res = await window.Firebase.atomicBalanceMutation({
-          deltaCoins: rew.coins,
-          deltaStars: rew.stars,
-          deltaTickets: rew.tickets,
-          deltaDiamonds: rew.diamonds,
-          deltaUltraCredits: isUltra ? 1 : 0,
-          deltaUltraTotal: isUltra ? 1 : 0,
-          reason: `Completed: ${task.title || taskId}`,
-          txId
-        });
-        if (!res.ok) {
-          alert(`❌ ${res.error || 'Duplicate claim prevented.'}`);
-          closeVerifyModal();
-          return;
-        }
-      } else if (window.firebaseSync) {
-        if (rew.coins > 0) window.firebaseSync.addCoins(rew.coins, task.title);
-        if (rew.stars > 0) window.firebaseSync.addStars(rew.stars, task.title);
-        if (rew.tickets > 0) window.firebaseSync.addTickets(rew.tickets, task.title);
-        if (rew.diamonds > 0) window.firebaseSync.addDiamonds(rew.diamonds, task.title);
-        if (isUltra && typeof window.firebaseSync.addUltraTaskCompletion === 'function') {
-          window.firebaseSync.addUltraTaskCompletion(1);
-        }
-      }
+      const pendingMap = getPendingPrizesMap();
+      pendingMap[taskId] = Date.now();
+      savePendingPrizesMap(pendingMap);
 
-      // Mark permanently completed once
-      completedMap[taskId] = Date.now();
-      saveCompletedMap(completedMap);
-      incrementCategoryDailyCount(cat);
-
-      const newTotal = (parseInt(localStorage.getItem('completed_tasks_count') || '0', 10) || 0) + 1;
-      localStorage.setItem('completed_tasks_count', String(newTotal));
-      localStorage.setItem('task_game_total_tasks_completed', String(newTotal));
-
-      // Increment event tasks if leaderboard event running
-      const curEvtTasks = (parseInt(localStorage.getItem('task_game_event_tasks_count') || '0', 10) || 0) + 1;
-      localStorage.setItem('task_game_event_tasks_count', String(curEvtTasks));
-      localStorage.setItem('task_game_event_tasks', String(curEvtTasks));
-
-      // NOTE: Pass progress stays completely independent of Common & Ultra task completion counts (Req 9 & A3)
-      syncUserStateToCloud();
       closeVerifyModal();
       refreshAllTaskViews();
-
-      alert(`✅ Verified & Rewarded!\n\n${task.title || 'Mission'}\nReward: ${formatRewardParts(rew)}`);
+      syncUserStateToCloud();
+      openTaskPrizePopup(taskId);
     } finally {
       _verifyBusy = false;
       if (btn) btn.disabled = false;
     }
   }
 
-  function syncUserStateToCloud() {
+  const PENDING_PRIZES_KEY = 'tap_empire_pending_prizes';
+  const FALLBACK_SPONSOR_LINKS_20 = [
+    'https://uplcm.com/4/12169313',
+    'https://uplcm.com/4/12169338',
+    'https://uplcm.com/4/12169321',
+    'https://uplcm.com/4/12169324',
+    'https://uplcm.com/4/12169336',
+    'https://uplcm.com/4/11834220',
+    'https://uplcm.com/4/12169323',
+    'https://uplcm.com/4/11616083',
+    'https://uplcm.com/4/12169326',
+    'https://uplcm.com/4/12169318',
+    'https://uplcm.com/4/12169312',
+    'https://uplcm.com/4/12169337',
+    'https://uplcm.com/4/12169328',
+    'https://uplcm.com/4/12169335',
+    'https://uplcm.com/4/12169339',
+    'https://uplcm.com/4/12169319',
+    'https://uplcm.com/4/10684653',
+    'https://uplcm.com/4/12169325',
+    'https://uplcm.com/4/12169330',
+    'https://uplcm.com/4/11834221'
+  ];
+
+  const ENGINE_BASE_URL = (() => {
+    try {
+      const cs = document.currentScript && document.currentScript.src;
+      if (cs) return new URL('.', cs).href;
+    } catch (e) {}
+    return '../../';
+  })();
+
+  let _activePrizeTaskId = null;
+  let _prizeClaimBusy = false;
+
+  function getPendingPrizesMap() {
+    const m = safeJsonParse(localStorage.getItem(PENDING_PRIZES_KEY), {});
+    return (m && typeof m === 'object') ? m : {};
+  }
+
+  function savePendingPrizesMap(map) {
+    localStorage.setItem(PENDING_PRIZES_KEY, JSON.stringify(map || {}));
+  }
+
+  function openTenTaskSponsorLinks(seed) {
+    if (typeof window.openTenSponsorAdLinks === 'function') {
+      return window.openTenSponsorAdLinks(seed);
+    }
+    const list = (Array.isArray(window.PASS_SPONSOR_LINKS_20) && window.PASS_SPONSOR_LINKS_20.length > 0)
+      ? window.PASS_SPONSOR_LINKS_20
+      : FALLBACK_SPONSOR_LINKS_20;
+    const total = Math.min(10, list.length);
+    const start = Math.abs(parseInt(seed || Date.now(), 10)) % list.length;
+    const openedUrls = [];
+    for (let offset = 0; offset < total; offset++) {
+      const url = list[(start + offset) % list.length];
+      openedUrls.push(url);
+      try {
+        const adTab = window.open(url, '_blank');
+        if (adTab) {
+          try { adTab.blur(); } catch (e) {}
+        }
+      } catch (err) {}
+    }
+    try { window.focus(); } catch (e) {}
+    return openedUrls;
+  }
+
+  function getPrizeStickerUrl(rew, cat) {
+    if (rew.stars > 0) return `${ENGINE_BASE_URL}assets/stickers/sticker-star.png`;
+    if (rew.coins > 0) return `${ENGINE_BASE_URL}assets/stickers/sticker-coin.png`;
+    if (rew.diamonds > 0) return `${ENGINE_BASE_URL}assets/stickers/sticker-diamond.png`;
+    if (rew.tickets > 0) return `${ENGINE_BASE_URL}assets/stickers/sticker-ticket.png`;
+    if (cat === 'quiz') return `${ENGINE_BASE_URL}assets/stickers/sticker-crown.png`;
+    return `${ENGINE_BASE_URL}assets/stickers/sticker-gift.png`;
+  }
+
+  function ensureTaskPrizePopupInDom() {
+    let overlay = document.getElementById('taskPrizePopupOverlay');
+    if (overlay && document.getElementById('btnPrizeModalClose')) return overlay;
+    if (overlay) overlay.remove();
+
+    overlay = document.createElement('div');
+    overlay.id = 'taskPrizePopupOverlay';
+    overlay.className = 'modal-backdrop';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(2,6,23,0.86);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);display:none;align-items:center;justify-content:center;z-index:100001;padding:16px;';
+    overlay.onclick = (e) => { if (e.target === overlay) closeTaskPrizePopup(); };
+    overlay.innerHTML = `
+      <div class="task-prize-popup-card" style="position:relative;width:100%;max-width:370px;background:linear-gradient(160deg,#0f1d40 0%,#060e24 100%);border:2px solid rgba(56,189,248,0.55);border-radius:22px;padding:1.35rem 1.2rem 1.2rem;box-shadow:0 20px 52px rgba(0,0,0,0.88),0 0 32px rgba(56,189,248,0.28);color:#fff;text-align:center;" onclick="event.stopPropagation()">
+        <button type="button" id="btnClosePrizePopup" onclick="TapEngine.closeTaskPrizePopup()" aria-label="Close prize popup" title="Close" style="position:absolute;top:12px;right:12px;width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.22);color:#e2e8f0;font-size:0.95rem;font-weight:900;cursor:pointer;display:flex;align-items:center;justify-content:center;">✕</button>
+        <div id="prizePopupBadge" style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:999px;background:rgba(16,185,129,0.18);border:1px solid rgba(52,211,153,0.45);color:#34d399;font-size:0.72rem;font-weight:900;letter-spacing:0.04em;margin-bottom:0.7rem;">✓ TASK COMPLETED</div>
+        <div id="prizePopupIconWrap" style="width:76px;height:76px;margin:0 auto 0.65rem;display:flex;align-items:center;justify-content:center;filter:drop-shadow(0 8px 18px rgba(0,0,0,0.65));"></div>
+        <h3 id="prizePopupTitle" style="margin:0 0 0.35rem 0;font-size:1.12rem;font-weight:900;color:#ffffff;">Task Prize Ready!</h3>
+        <div id="prizePopupValueBox" style="display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:0.55rem 1.1rem;border-radius:14px;background:rgba(250,204,21,0.14);border:1.5px solid rgba(250,204,21,0.5);color:#fde047;font-size:1.18rem;font-weight:900;margin:0.25rem 0 0.65rem;box-shadow:0 0 18px rgba(250,204,21,0.2);">+0</div>
+        <p id="prizePopupHint" style="margin:0 0 1rem 0;font-size:0.78rem;color:#cbd5e1;line-height:1.45;"></p>
+        <div id="prizePopupActionsRow" style="display:flex;gap:8px;align-items:center;">
+          <button type="button" id="btnPrizeModalClose" onclick="TapEngine.closeTaskPrizePopup()" style="flex:0.85;padding:0.72rem 0.75rem;border-radius:12px;border:1px solid rgba(148,163,184,0.38);background:rgba(30,41,59,0.85);color:#cbd5e1;font-size:0.84rem;font-weight:800;cursor:pointer;">Close</button>
+          <button type="button" id="btnPrizeCollect" onclick="TapEngine.claimTaskPrizeFromPopup(false)" style="flex:1.55;padding:0.74rem 0.9rem;border-radius:12px;border:none;background:linear-gradient(135deg,#10b981 0%,#059669 100%);color:#fff;font-size:0.88rem;font-weight:900;cursor:pointer;box-shadow:0 6px 18px rgba(16,185,129,0.45);display:none;">🎁 Collect</button>
+          <button type="button" id="btnPrizeWatchAds10" onclick="TapEngine.claimTaskPrizeFromPopup(true)" style="flex:1.55;padding:0.74rem 0.9rem;border-radius:12px;border:1px solid #fde047;background:linear-gradient(135deg,#f59e0b 0%,#d97706 100%);color:#0f172a;font-size:0.86rem;font-weight:900;cursor:pointer;box-shadow:0 6px 18px rgba(245,158,11,0.45);display:none;">📺 Watch Ads (10)</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    return overlay;
+  }
+
+  function openTaskPrizePopup(taskId) {
+    const task = getStoredTasks().find(t => t.id === taskId);
+    if (!task) return;
+    const completedMap = getCompletedMap();
+    if (completedMap[taskId]) {
+      const pending = getPendingPrizesMap();
+      if (pending[taskId]) {
+        delete pending[taskId];
+        savePendingPrizesMap(pending);
+      }
+      return;
+    }
+
+    const overlay = ensureTaskPrizePopupInDom();
+    _activePrizeTaskId = taskId;
+
+    const cat = normalizeCategory(task.category, task);
+    const rew = getTaskRewardInfo(task);
+    const requiresWatchAds10 = (rew.coins > 0 || rew.stars > 0);
+    const rewardSummary = cat === 'quiz' ? '🧠 +1 Pass Level (Challenge Done)' : formatRewardParts(rew, task);
+
+    const iconWrap = document.getElementById('prizePopupIconWrap');
+    const titleEl = document.getElementById('prizePopupTitle');
+    const valEl = document.getElementById('prizePopupValueBox');
+    const hintEl = document.getElementById('prizePopupHint');
+    const btnCollect = document.getElementById('btnPrizeCollect');
+    const btnWatch10 = document.getElementById('btnPrizeWatchAds10');
+
+    const stickerUrl = getPrizeStickerUrl(rew, cat);
+    if (iconWrap) {
+      iconWrap.innerHTML = `<img src="${escapeHtml(stickerUrl)}" alt="Prize" style="width:68px;height:68px;object-fit:contain;display:block;" />`;
+    }
+    if (titleEl) titleEl.textContent = task.title || 'Task Completed!';
+    if (valEl) valEl.textContent = rewardSummary;
+
+    if (requiresWatchAds10) {
+      if (hintEl) hintEl.textContent = 'Click Watch Ads to open 10 sponsor ad links and collect your Coin/Star prize!';
+      if (btnCollect) btnCollect.style.display = 'none';
+      if (btnWatch10) {
+        btnWatch10.style.display = 'inline-flex';
+        btnWatch10.style.alignItems = 'center';
+        btnWatch10.style.justifyContent = 'center';
+        btnWatch10.style.gap = '6px';
+        btnWatch10.disabled = false;
+        btnWatch10.textContent = '📺 Watch Ads (10 Links)';
+      }
+    } else {
+      if (hintEl) hintEl.textContent = 'Verification successful! Tap Collect to claim your prize value now.';
+      if (btnWatch10) btnWatch10.style.display = 'none';
+      if (btnCollect) {
+        btnCollect.style.display = 'inline-flex';
+        btnCollect.style.alignItems = 'center';
+        btnCollect.style.justifyContent = 'center';
+        btnCollect.style.gap = '6px';
+        btnCollect.disabled = false;
+        btnCollect.textContent = cat === 'quiz' ? '✓ Collect Progress' : `🎁 Collect`;
+      }
+    }
+
+    overlay.style.display = 'flex';
+    overlay.classList.add('active');
+  }
+
+  function closeTaskPrizePopup() {
+    _activePrizeTaskId = null;
+    const overlay = document.getElementById('taskPrizePopupOverlay');
+    if (overlay) {
+      overlay.classList.remove('active');
+      overlay.style.display = 'none';
+    }
+    refreshAllTaskViews();
+  }
+
+  async function claimTaskPrizeFromPopup(isWatchAds10 = false) {
+    if (_prizeClaimBusy || !_activePrizeTaskId) return;
+    const taskId = _activePrizeTaskId;
+    const task = getStoredTasks().find(t => t.id === taskId);
+    if (!task) {
+      closeTaskPrizePopup();
+      return;
+    }
+
+    const completedMap = getCompletedMap();
+    if (completedMap[taskId]) {
+      const pendingCleanup = getPendingPrizesMap();
+      if (pendingCleanup[taskId]) {
+        delete pendingCleanup[taskId];
+        savePendingPrizesMap(pendingCleanup);
+      }
+      closeTaskPrizePopup();
+      return;
+    }
+
+    const cat = normalizeCategory(task.category, task);
+    const rew = getTaskRewardInfo(task);
+    const requiresWatchAds10 = (rew.coins > 0 || rew.stars > 0);
+    if (requiresWatchAds10 && !isWatchAds10) {
+      isWatchAds10 = true;
+    }
+
+    // Open all 10 sponsor ad links synchronously under the Watch Ads button click gesture
+    if (requiresWatchAds10 || isWatchAds10) {
+      openTenTaskSponsorLinks(Date.now());
+      const curAds = parseInt(localStorage.getItem('ads_watched_count') || localStorage.getItem('task_game_ads_watched_count') || '0', 10) || 0;
+      localStorage.setItem('ads_watched_count', String(curAds + 10));
+      localStorage.setItem('task_game_ads_watched_count', String(curAds + 10));
+    }
+
+    const btnCollect = document.getElementById('btnPrizeCollect');
+    const btnWatch10 = document.getElementById('btnPrizeWatchAds10');
+    _prizeClaimBusy = true;
+    if (btnCollect) btnCollect.disabled = true;
+    if (btnWatch10) btnWatch10.disabled = true;
+
+    try {
+      const txId = `task_reward_${taskId}`;
+      const isUltra = cat === 'ultra';
+      let updatedCoins = parseInt(localStorage.getItem('task_game_coins') || '0', 10) || 0;
+      let updatedStars = parseInt(localStorage.getItem('task_game_stars') || '0', 10) || 0;
+      let updatedTickets = parseInt(localStorage.getItem('task_user_tickets') || localStorage.getItem('user_tickets') || localStorage.getItem('task_game_tickets') || '0', 10) || 0;
+      let updatedDiamonds = parseInt(localStorage.getItem('task_user_diamonds') || '0', 10) || 0;
+
+      const hasCurrencyReward = (rew.coins + rew.stars + rew.tickets + rew.diamonds) > 0 || isUltra;
+      if (hasCurrencyReward) {
+        if (window.Firebase && typeof window.Firebase.atomicBalanceMutation === 'function') {
+          const res = await window.Firebase.atomicBalanceMutation({
+            deltaCoins: rew.coins,
+            deltaStars: rew.stars,
+            deltaTickets: rew.tickets,
+            deltaDiamonds: rew.diamonds,
+            deltaUltraCredits: isUltra ? 1 : 0,
+            deltaUltraTotal: isUltra ? 1 : 0,
+            reason: `Completed: ${task.title || taskId}`,
+            txId
+          });
+          if (!res.ok) {
+            alert(`❌ ${res.error || 'Duplicate claim prevented.'}`);
+            closeTaskPrizePopup();
+            return;
+          }
+          updatedCoins = res.coins;
+          updatedStars = res.stars;
+          updatedTickets = res.tickets;
+          updatedDiamonds = res.diamonds;
+        } else {
+          if (window.firebaseSync) {
+            if (rew.coins > 0) updatedCoins = window.firebaseSync.addCoins(rew.coins, task.title);
+            if (rew.stars > 0) updatedStars = window.firebaseSync.addStars(rew.stars, task.title);
+            if (rew.tickets > 0) updatedTickets = window.firebaseSync.addTickets(rew.tickets, task.title);
+            if (rew.diamonds > 0) updatedDiamonds = window.firebaseSync.addDiamonds(rew.diamonds, task.title);
+            if (isUltra && typeof window.firebaseSync.addUltraTaskCompletion === 'function') {
+              window.firebaseSync.addUltraTaskCompletion(1);
+            }
+          } else {
+            updatedCoins += rew.coins;
+            updatedStars += rew.stars;
+            updatedTickets += rew.tickets;
+            updatedDiamonds += rew.diamonds;
+            localStorage.setItem('task_game_coins', String(updatedCoins));
+            localStorage.setItem('user_coins', String(updatedCoins));
+            localStorage.setItem('task_game_coins_alt', String(updatedCoins));
+            localStorage.setItem('task_game_stars', String(updatedStars));
+            localStorage.setItem('user_stars', String(updatedStars));
+            localStorage.setItem('task_user_tickets', String(updatedTickets));
+            localStorage.setItem('user_tickets', String(updatedTickets));
+            localStorage.setItem('task_game_tickets', String(updatedTickets));
+            localStorage.setItem('task_user_diamonds', String(updatedDiamonds));
+            localStorage.setItem('user_diamonds', String(updatedDiamonds));
+            if (isUltra) {
+              const curCredits = Math.max(0, parseInt(localStorage.getItem('wallet_ultra_task_credits') || '0', 10) || 0);
+              const curTotal = Math.max(0, parseInt(localStorage.getItem('wallet_ultra_total_completed') || '0', 10) || 0);
+              localStorage.setItem('wallet_ultra_task_credits', String(curCredits + 1));
+              localStorage.setItem('wallet_ultra_total_completed', String(curTotal + 1));
+            }
+          }
+        }
+      }
+
+      // Remove pending prize & mark permanently completed once
+      const pendingMap = getPendingPrizesMap();
+      if (pendingMap[taskId]) {
+        delete pendingMap[taskId];
+        savePendingPrizesMap(pendingMap);
+      }
+
+      completedMap[taskId] = Date.now();
+      saveCompletedMap(completedMap);
+      if (cat === 'common') recordCommonCompletedId(taskId);
+      if (cat === 'google') recordGoogleCompletedId(taskId);
+      incrementCategoryDailyCount(cat, taskId);
+
+      const newTotal = (parseInt(localStorage.getItem('completed_tasks_count') || '0', 10) || 0) + 1;
+      localStorage.setItem('completed_tasks_count', String(newTotal));
+      localStorage.setItem('task_game_total_tasks_completed', String(newTotal));
+
+      // Increment event tasks
+      const curEvtTasks = (parseInt(localStorage.getItem('task_game_event_tasks_count') || '0', 10) || 0) + 1;
+      localStorage.setItem('task_game_event_tasks_count', String(curEvtTasks));
+      localStorage.setItem('task_game_event_tasks', String(curEvtTasks));
+
+      // Advance Battle Pass level & task count (1 verified task = +1 Pass Level up to 500)
+      const prevPassCompleted = parseInt(localStorage.getItem('task_pass_total_completed') || '0', 10) || 0;
+      const nextPassCompleted = prevPassCompleted + 1;
+      const nextPassLevel = Math.min(500, nextPassCompleted);
+      localStorage.setItem('task_pass_total_completed', String(nextPassCompleted));
+      localStorage.setItem('task_pass_level', String(nextPassLevel));
+
+      if (typeof window.updateAllDomBalances === 'function') {
+        window.updateAllDomBalances(updatedCoins, updatedStars, updatedTickets, updatedDiamonds);
+      }
+      window.dispatchEvent(new CustomEvent('balance:changed', {
+        detail: { coins: updatedCoins, stars: updatedStars, tickets: updatedTickets, diamonds: updatedDiamonds }
+      }));
+      window.dispatchEvent(new CustomEvent('tasks:changed'));
+
+      syncUserStateToCloud({
+        coins: updatedCoins,
+        stars: updatedStars,
+        tickets: updatedTickets,
+        diamonds: updatedDiamonds,
+        passLevel: nextPassLevel,
+        passTotal: nextPassCompleted
+      });
+      closeTaskPrizePopup();
+      refreshAllTaskViews();
+
+      const rewardSummary = formatRewardParts(rew, task);
+      if (typeof window.showToast === 'function') {
+        window.showToast(`🎉 Collected ${cat === 'quiz' ? 'Quiz Progress!' : rewardSummary} • Pass Lv ${nextPassLevel}`);
+      }
+    } finally {
+      _prizeClaimBusy = false;
+      if (btnCollect) btnCollect.disabled = false;
+      if (btnWatch10) btnWatch10.disabled = false;
+    }
+  }
+
+  function syncUserStateToCloud(info = {}) {
     if (typeof window.saveCurrentProfileToFirestore === 'function') {
       try { window.saveCurrentProfileToFirestore(); } catch (e) {}
     }
     try {
       const ch = new BroadcastChannel(SYNC_CHANNEL_NAME);
       ch.postMessage({ type: 'CLAIMS_UPDATED', timestamp: Date.now() });
+      ch.postMessage({ type: 'TASK_COMPLETED', timestamp: Date.now() });
+      if (info && info.passLevel !== undefined) {
+        ch.postMessage({ type: 'TASK_PASS_SYNC', level: info.passLevel, totalCompleted: info.passTotal || info.passLevel, timestamp: Date.now() });
+      }
+      if (info && info.coins !== undefined) {
+        ch.postMessage({ type: 'BALANCES_UPDATED', coins: info.coins, stars: info.stars || 0, tickets: info.tickets || 0, diamonds: info.diamonds || 0, timestamp: Date.now() });
+      }
       ch.close();
+    } catch (e) {}
+    try {
+      if (info && info.coins !== undefined) {
+        const balCh = new BroadcastChannel('balance_sync_channel');
+        balCh.postMessage({ type: 'BALANCE_UPDATED', coins: info.coins, stars: info.stars || 0, tickets: info.tickets || 0, diamonds: info.diamonds || 0 });
+        balCh.close();
+      }
     } catch (e) {}
   }
 
@@ -933,12 +1555,28 @@
 
     if (cat === 'common') {
       // Never repeat previously completed Common tasks!
-      // Example: completed 7 of 10 on Day 1 -> Day 2 starts right from task 8 onwards!
+      // Keep already-opened tasks visible so user can finish ✓ Verify, plus remaining daily unopened slots.
       const uncompleted = allInCat.filter(t => !completedMap[t.id]);
-      const windowSize = Math.max(1, limitInfo.remainingToday);
+      const openedMap = getOpenedMap();
+      const openedPending = uncompleted.filter(t => !!openedMap[t.id]);
+      const unopenedQueue = uncompleted.filter(t => !openedMap[t.id]);
+      const extraVisible = limitInfo.remainingToday > 0 ? unopenedQueue.slice(0, limitInfo.remainingToday) : [];
       return {
         allInCat,
-        visibleTasks: limitInfo.remainingToday > 0 ? uncompleted.slice(0, windowSize) : [],
+        visibleTasks: [...openedPending, ...extraVisible],
+        limitInfo
+      };
+    }
+
+    if (cat === 'ultra') {
+      // Automatically remove Ultra tasks whose 24-hour unlock timer expired without finishing
+      const visibleUltra = allInCat.filter(t => {
+        if (completedMap[t.id]) return true;
+        return getTaskTimingStatus(t).status !== 'expired';
+      });
+      return {
+        allInCat,
+        visibleTasks: visibleUltra,
         limitInfo
       };
     }
@@ -980,17 +1618,28 @@
     const opened = openedMap[task.id];
     const timing = getTaskTimingStatus(task);
     const rew = getTaskRewardInfo(task);
-    const taskUrl = task.url || task.link || '';
+
+    // Quiz 2-Step Unlock: Step 1 = Target Common Tasks Completed, Step 2 = Diamond Cost
+    const isQuiz = cat === 'quiz';
+    const targetCommon = isQuiz ? getQuizTargetCommonCount(task) : 0;
+    const commonDone = isQuiz ? getCommonCompletedCount() : 0;
+    const step1Met = !isQuiz || commonDone >= targetCommon;
 
     let timerBadgeHtml = '';
     if (timing.status === 'upcoming') {
       timerBadgeHtml = `<span style="font-size:0.68rem;font-weight:800;color:#fbbf24;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.35);padding:2px 7px;border-radius:999px;">🕒 Starts ${new Date(timing.startMs).toLocaleString()}</span>`;
     } else if (timing.status === 'expired') {
-      timerBadgeHtml = `<span style="font-size:0.68rem;font-weight:800;color:#f87171;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.35);padding:2px 7px;border-radius:999px;">⌛ Expired</span>`;
+      timerBadgeHtml = `<span style="font-size:0.68rem;font-weight:800;color:#f87171;background:rgba(239,68,68,0.15);border:1px solid rgba(248,113,113,0.35);padding:2px 7px;border-radius:999px;">⌛ Expired</span>`;
+    } else if (cat === 'ultra' && timing.startsOnUnlock) {
+      timerBadgeHtml = `<span style="font-size:0.68rem;font-weight:800;color:#fde047;background:rgba(250,204,21,0.16);border:1px solid rgba(250,204,21,0.4);padding:2px 7px;border-radius:999px;">⏱️ 24h Timer (Starts on Unlock)</span>`;
     } else if (timing.endMs && !opts.hideIndividualTimer) {
       const rem = timing.endMs - Date.now();
       timerBadgeHtml = `<span data-countdown-end="${timing.endMs}" style="font-size:0.68rem;font-weight:800;color:${theme.accent};background:${theme.pillBg};border:1px solid ${theme.border};padding:2px 7px;border-radius:999px;">⏱️ ${formatCountdownMs(rem)}</span>`;
     }
+
+    const quizStepBadge = isQuiz
+      ? `<span style="font-size:0.67rem;font-weight:800;color:${step1Met ? '#34d399' : '#fbbf24'};background:${step1Met ? 'rgba(16,185,129,0.16)' : 'rgba(245,158,11,0.16)'};border:1px solid ${step1Met ? 'rgba(52,211,153,0.4)' : 'rgba(245,158,11,0.4)'};padding:2px 7px;border-radius:999px;">${step1Met ? '✓' : '🔒'} Step 1: Common ${commonDone}/${targetCommon}</span>`
+      : '';
 
     let actionHtml = '';
     if (isDone) {
@@ -1001,57 +1650,69 @@
       actionHtml = `<button type="button" disabled style="padding:0.42rem 0.75rem;border-radius:9px;background:rgba(100,116,139,0.25);border:1px solid rgba(148,163,184,0.3);color:#94a3b8;font-size:0.75rem;font-weight:800;cursor:not-allowed;">Upcoming</button>`;
     } else if (opts.lockedByGroup) {
       actionHtml = `<span style="padding:0.4rem 0.7rem;border-radius:9px;background:rgba(100,116,139,0.25);color:#cbd5e1;font-size:0.74rem;font-weight:800;">🔒 Group Locked</span>`;
-    } else if (!isUnlocked) {
-      actionHtml = `<button type="button" onclick="TapEngine.unlockSingleTask('${task.id}')" style="padding:0.45rem 0.85rem;border-radius:10px;border:1px solid ${theme.border};background:${theme.btnBg};color:#fff;font-size:0.76rem;font-weight:900;cursor:pointer;white-space:nowrap;">🔒 Buy ${cost.icon} ${cost.amount.toLocaleString()}</button>`;
-    } else if (!opened) {
-      actionHtml = `<button type="button" onclick="TapEngine.handleOpenTask('${task.id}')" style="padding:0.45rem 0.95rem;border-radius:10px;border:1px solid ${theme.border};background:${theme.btnBg};color:#fff;font-size:0.78rem;font-weight:900;cursor:pointer;white-space:nowrap;">↗ Open</button>`;
-    } else {
-      const waitLeft = opened.readyAt ? Math.max(0, Math.ceil((opened.readyAt - Date.now()) / 1000)) : 0;
-      if (waitLeft > 0) {
-        actionHtml = `
-          <div style="display:flex;gap:5px;align-items:center;">
-            <button type="button" onclick="TapEngine.handleOpenTask('${task.id}')" style="padding:0.42rem 0.65rem;border-radius:9px;border:1px solid ${theme.border};background:${theme.pillBg};color:${theme.accent};font-size:0.72rem;font-weight:800;cursor:pointer;">↗ Open</button>
-            <button type="button" disabled data-wait-ready="${opened.readyAt}" style="padding:0.42rem 0.75rem;border-radius:9px;border:none;background:#334155;color:#cbd5e1;font-size:0.74rem;font-weight:800;">⏳ ${waitLeft}s</button>
-          </div>`;
+    } else if (isQuiz && !step1Met) {
+      actionHtml = `<button type="button" onclick="alert('🔒 Step 1 Locked: Complete ${targetCommon - commonDone} more Common Task(s) (${commonDone}/${targetCommon}) first!')" style="padding:0.45rem 0.85rem;border-radius:10px;border:1px solid rgba(245,158,11,0.5);background:rgba(245,158,11,0.16);color:#fde047;font-size:0.74rem;font-weight:900;cursor:pointer;white-space:nowrap;">🔒 ${commonDone}/${targetCommon} Common</button>`;
+    } else if (!isUnlocked && cat === 'star') {
+      const starProg = getStarUnlockProgress();
+      const gReq = getStarRequiredGoogleCount(task);
+      const ready = starProg.availableGoogleCredits >= gReq;
+      if (ready) {
+        actionHtml = `<button type="button" onclick="TapEngine.unlockSingleTask('${escapeHtml(task.id)}')" style="padding:0.45rem 0.85rem;border-radius:10px;border:1px solid rgba(192,132,252,0.8);background:linear-gradient(135deg,#9333ea 0%,#6d28d9 100%);color:#fff;font-size:0.76rem;font-weight:900;cursor:pointer;white-space:nowrap;">🔓 Unlock (📝 ${gReq})</button>`;
       } else {
-        actionHtml = `
-          <div style="display:flex;gap:5px;align-items:center;">
-            <button type="button" onclick="TapEngine.handleOpenTask('${task.id}')" style="padding:0.42rem 0.65rem;border-radius:9px;border:1px solid ${theme.border};background:${theme.pillBg};color:${theme.accent};font-size:0.72rem;font-weight:800;cursor:pointer;">↗ Reopen</button>
-            <button type="button" onclick="TapEngine.openVerifyModal('${task.id}')" style="padding:0.45rem 0.85rem;border-radius:9px;border:none;background:linear-gradient(135deg,#10b981 0%,#059669 100%);color:#fff;font-size:0.78rem;font-weight:900;cursor:pointer;">✓ Verify</button>
-          </div>`;
+        const missing = gReq - starProg.availableGoogleCredits;
+        actionHtml = `<button type="button" onclick="if(confirm('🔒 Complete ${missing} more Google Form Task(s) to unlock this Star Task! (${starProg.availableGoogleCredits}/${gReq} ready)\\n\\nOpen Google Form Tasks now?')){ window.location.href='index.html?cat=google'; }" style="padding:0.45rem 0.85rem;border-radius:10px;border:1px solid rgba(168,85,247,0.45);background:rgba(88,28,135,0.45);color:#e9d5ff;font-size:0.74rem;font-weight:900;cursor:pointer;white-space:nowrap;">🔒 ${starProg.availableGoogleCredits}/${gReq} Google</button>`;
+      }
+    } else if (!isUnlocked) {
+      const prefix = isQuiz ? '🔒 Step 2: ' : '🔒 Buy ';
+      actionHtml = `<button type="button" onclick="TapEngine.unlockSingleTask('${escapeHtml(task.id)}')" style="padding:0.45rem 0.85rem;border-radius:10px;border:1px solid ${theme.border};background:${theme.btnBg};color:#fff;font-size:0.76rem;font-weight:900;cursor:pointer;white-space:nowrap;">${prefix}${cost.icon} ${cost.amount.toLocaleString()}</button>`;
+    } else if (getPendingPrizesMap()[task.id]) {
+      const needsWatch10 = (rew.coins > 0 || rew.stars > 0);
+      const prizeBtnLabel = needsWatch10 ? '📺 Watch Ads' : '🎁 Collect';
+      const prizeBtnBg = needsWatch10
+        ? 'linear-gradient(135deg,#f59e0b 0%,#d97706 100%)'
+        : 'linear-gradient(135deg,#10b981 0%,#059669 100%)';
+      actionHtml = `<button type="button" class="btn-tg-collect-prize" onclick="TapEngine.openTaskPrizePopup('${escapeHtml(task.id)}')" style="padding:0.45rem 0.9rem;border-radius:10px;border:none;background:${prizeBtnBg};color:#fff;font-size:0.76rem;font-weight:900;cursor:pointer;white-space:nowrap;box-shadow:0 3px 10px rgba(0,0,0,0.3);">${prizeBtnLabel}</button>`;
+    } else if (!opened) {
+      actionHtml = `<button type="button" class="btn-tg-open" onclick="TapEngine.handleOpenTask('${escapeHtml(task.id)}')" style="padding:0.45rem 0.95rem;border-radius:10px;border:1px solid ${theme.border};background:${theme.btnBg};color:#fff;font-size:0.78rem;font-weight:900;cursor:pointer;white-space:nowrap;">▶ Open</button>`;
+    } else {
+      const waitLeft = (cat === 'star' || !opened.readyAt) ? 0 : Math.max(0, Math.ceil((opened.readyAt - Date.now()) / 1000));
+      if (waitLeft > 0) {
+        actionHtml = `<button type="button" disabled data-wait-ready="${opened.readyAt}" style="padding:0.44rem 0.85rem;border-radius:9px;border:1px solid ${theme.border};background:#1e293b;color:#cbd5e1;font-size:0.75rem;font-weight:800;">⏳ ${waitLeft}s</button>`;
+      } else {
+        actionHtml = `<button type="button" class="btn-tg-verify" onclick="TapEngine.openVerifyModal('${escapeHtml(task.id)}')" style="padding:0.45rem 0.95rem;border-radius:9px;border:none;background:linear-gradient(135deg,#10b981 0%,#059669 100%);color:#fff;font-size:0.78rem;font-weight:900;cursor:pointer;white-space:nowrap;">✓ Verify</button>`;
       }
     }
 
-    // Req 3 / Image 7 Common Tasks interaction: clean minimal card; when opened, show configured task link & hide card details cleanly
+    // No external links displayed inside ANY task card across all task tabs
     const isCommonClean = cat === 'common';
-    const showLinkChip = isCommonClean && opened && !isDone && taskUrl;
     const hideDetails = isCommonClean;
+    const cardExtraCls = isCommonClean ? ' tap-common-task-card' : '';
 
     return `
-      <div class="tap-task-card" data-task-id="${escapeHtml(task.id)}" style="background:${theme.cardBg};border:1.5px solid ${theme.border};border-radius:14px;padding:0.85rem;margin-bottom:0.65rem;display:flex;flex-direction:column;gap:8px;box-shadow:${theme.glow};">
+      <div class="tap-task-card${cardExtraCls}" data-task-id="${escapeHtml(task.id)}" style="background:${theme.cardBg};border:1.5px solid ${theme.border};border-radius:14px;padding:0.85rem;margin-bottom:0.65rem;display:flex;flex-direction:column;gap:6px;box-shadow:${theme.glow};">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
           <div style="flex:1;min-width:0;">
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:${hideDetails ? '0' : '4px'};">
               <span style="font-weight:900;color:#ffffff;font-size:0.9rem;">${escapeHtml(task.title || 'Mission')}</span>
-              <span style="font-size:0.7rem;font-weight:900;color:#fbbf24;background:rgba(250,204,21,0.14);border:1px solid rgba(250,204,21,0.35);padding:2px 7px;border-radius:999px;">${formatRewardParts(rew)}</span>
+              <span style="font-size:0.7rem;font-weight:900;color:#fbbf24;background:rgba(250,204,21,0.14);border:1px solid rgba(250,204,21,0.35);padding:2px 7px;border-radius:999px;">${formatRewardParts(rew, task)}</span>
+              ${quizStepBadge}
               ${timerBadgeHtml}
             </div>
             ${!hideDetails && task.description ? `<div style="font-size:0.72rem;color:#94a3b8;line-height:1.35;">${escapeHtml(task.description)}</div>` : ''}
           </div>
           <div style="flex-shrink:0;">${actionHtml}</div>
         </div>
-        ${showLinkChip ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:rgba(3,8,22,0.72);border:1px solid ${theme.border};border-radius:9px;padding:0.42rem 0.65rem;font-size:0.72rem;"><a href="${escapeHtml(taskUrl)}" target="_blank" rel="noopener" style="color:${theme.accent};font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-decoration:underline;">🔗 ${escapeHtml(taskUrl)}</a><span style="color:#34d399;font-weight:800;white-space:nowrap;">Ready to Verify</span></div>` : ''}
       </div>
     `;
   }
 
   function renderProGroupCard() {
-    const bundle = buildProGroupBundle();
+    const bundles = buildProGroupBundles().filter(b => b.active);
     const theme = getCategoryTheme('pro');
     const limitInfo = getCategoryLimitInfo('pro');
     const progHtml = renderProgressBarHtml(limitInfo, 'Pro 3-Task Group Progress');
 
-    if (!bundle || !bundle.active) {
+    if (bundles.length === 0) {
       return progHtml + `
         <div style="text-align:center;padding:2rem 1rem;background:${theme.cardBg};border:1.5px dashed ${theme.border};border-radius:16px;box-shadow:${theme.glow};">
           <div style="font-size:2.3rem;margin-bottom:0.4rem;">💎</div>
@@ -1060,39 +1721,41 @@
         </div>`;
     }
 
-    const timerText = bundle.sharedEndMs > 0
-      ? (bundle.isExpired ? '⌛ Timer Expired' : `⏱️ Shared Timer: ${formatCountdownMs(bundle.sharedEndMs - Date.now())}`)
-      : `⏱️ Duration: ${Math.round(bundle.durationMinutes / 60 * 10) / 10}h (Starts on Unlock)`;
-
-    const headerBtn = bundle.isExpired
-      ? `<span style="padding:0.42rem 0.85rem;border-radius:9px;background:rgba(239,68,68,0.2);border:1px solid rgba(248,113,113,0.4);color:#f87171;font-weight:900;font-size:0.76rem;">Expired</span>`
-      : (!bundle.isUnlocked
-        ? `<button type="button" onclick="TapEngine.unlockProGroup('${bundle.groupId}', ${bundle.costInfo.amount}, '${bundle.costInfo.currency}', ${bundle.durationMinutes})" style="padding:0.5rem 1rem;border-radius:10px;border:none;background:${theme.btnBg};color:#fff;font-weight:900;font-size:0.8rem;cursor:pointer;">🔓 Unlock Group (${bundle.costInfo.icon} ${bundle.costInfo.amount.toLocaleString()})</button>`
-        : `<span style="padding:0.4rem 0.8rem;border-radius:999px;background:rgba(16,185,129,0.2);border:1px solid #34d399;color:#34d399;font-weight:900;font-size:0.75rem;">🔓 Group Unlocked</span>`);
-
-    // Filter out expired incomplete tasks when timer expires (Req #6)
     const completedMap = getCompletedMap();
-    const rows = bundle.tasks
-      .filter(t => !bundle.isExpired || completedMap[t.id])
-      .map(t => renderTaskRowCard(t, { ignoreIndividualCost: true, hideIndividualTimer: true, lockedByGroup: !bundle.isUnlocked }))
-      .join('');
+    const cardsHtml = bundles.map((bundle, packIdx) => {
+      const timerText = bundle.sharedEndMs > 0
+        ? (bundle.isExpired ? '⌛ Timer Expired' : `⏱️ Shared Timer: ${formatCountdownMs(bundle.sharedEndMs - Date.now())}`)
+        : `⏱️ Duration: ${Math.round(bundle.durationMinutes / 60 * 10) / 10}h (Starts on Unlock)`;
 
-    const expiredNotice = bundle.isExpired && !rows
-      ? `<div style="text-align:center;padding:1.25rem;color:#f87171;font-weight:800;font-size:0.82rem;">⌛ Pro Group timer expired before tasks were completed. No rewards awarded.</div>`
-      : '';
+      const headerBtn = bundle.isExpired
+        ? `<span style="padding:0.42rem 0.85rem;border-radius:9px;background:rgba(239,68,68,0.2);border:1px solid rgba(248,113,113,0.4);color:#f87171;font-weight:900;font-size:0.76rem;">Expired</span>`
+        : (!bundle.isUnlocked
+          ? `<button type="button" onclick="TapEngine.unlockProGroup('${escapeHtml(bundle.groupId)}', ${bundle.costInfo.amount}, '${escapeHtml(bundle.costInfo.currency)}', ${bundle.durationMinutes})" style="padding:0.5rem 1rem;border-radius:10px;border:none;background:${theme.btnBg};color:#fff;font-weight:900;font-size:0.8rem;cursor:pointer;">🔓 Unlock Group (${bundle.costInfo.icon} ${bundle.costInfo.amount.toLocaleString()})</button>`
+          : `<span style="padding:0.4rem 0.8rem;border-radius:999px;background:rgba(16,185,129,0.2);border:1px solid #34d399;color:#34d399;font-weight:900;font-size:0.75rem;">🔓 Group Unlocked</span>`);
 
-    return progHtml + `
-      <div style="background:${theme.cardBg};border:1.5px solid ${theme.border};border-radius:16px;padding:0.95rem;box-shadow:${theme.glow};">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:0.75rem;padding-bottom:0.65rem;border-bottom:1px solid ${theme.border};">
-          <div>
-            <div style="font-weight:900;font-size:0.95rem;color:${theme.accent};">💎 Pro Elite 3-Task Group</div>
-            <div data-countdown-end="${bundle.sharedEndMs || ''}" style="font-size:0.76rem;font-weight:800;color:#e2e8f0;margin-top:2px;">${timerText}</div>
+      const rows = bundle.tasks
+        .filter(t => !bundle.isExpired || completedMap[t.id])
+        .map(t => renderTaskRowCard(t, { ignoreIndividualCost: true, hideIndividualTimer: true, lockedByGroup: !bundle.isUnlocked }))
+        .join('');
+
+      const expiredNotice = bundle.isExpired && !rows
+        ? `<div style="text-align:center;padding:1.25rem;color:#f87171;font-weight:800;font-size:0.82rem;">⌛ Pro Group timer expired before tasks were completed. No rewards awarded.</div>`
+        : '';
+
+      return `
+        <div style="background:${theme.cardBg};border:1.5px solid ${theme.border};border-radius:16px;padding:0.95rem;margin-bottom:0.85rem;box-shadow:${theme.glow};">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:0.75rem;padding-bottom:0.65rem;border-bottom:1px solid ${theme.border};">
+            <div>
+              <div style="font-weight:900;font-size:0.95rem;color:${theme.accent};">💎 Pro Package #${packIdx + 1} (${bundle.tasks.length} Tasks)</div>
+              <div data-countdown-end="${bundle.sharedEndMs || ''}" style="font-size:0.76rem;font-weight:800;color:#e2e8f0;margin-top:2px;">${timerText}</div>
+            </div>
+            <div>${headerBtn}</div>
           </div>
-          <div>${headerBtn}</div>
-        </div>
-        ${rows || expiredNotice}
-      </div>
-    `;
+          ${rows || expiredNotice}
+        </div>`;
+    }).join('');
+
+    return progHtml + cardsHtml;
   }
 
   function renderCategoryIntoContainer(containerEl, catKey, options = {}) {
@@ -1110,52 +1773,45 @@
     const cfg = getSettings();
     let bannerHtml = renderProgressBarHtml(limitInfo, options.progressTitle);
 
-    // Common: Progressive Daily Streak & Optional Ad Extra Unlock
+    // Common: Progressive Daily Streak & Conditional "+20 Renew Tasks" Watch Ad once quota is completed
     if (cat === 'common') {
       const prog = getDailyProgressionState();
       const allowAd = cfg.dailyProgression && cfg.dailyProgression.allowAdExtraTasks !== false;
+      const renewCount = Math.max(1, parseInt((cfg.dailyProgression && cfg.dailyProgression.adExtraTaskCount) || '20', 10) || 20);
+      const isQuotaFinished = limitInfo.remainingToday <= 0;
       bannerHtml += `
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;background:${theme.pillBg};border:1px solid ${theme.border};border-radius:12px;padding:0.6rem 0.8rem;margin-bottom:0.75rem;">
-          <div style="font-size:0.76rem;font-weight:800;color:#bae6fd;">
-            🔥 Day ${prog.dayNumber} &bull; Streak: <b style="color:#fbbf24;">${prog.streakDays}d</b> &bull; Uncompleted Queue (No Repeats)
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;background:${theme.pillBg};border:1.5px solid ${isQuotaFinished ? '#38bdf8' : theme.border};border-radius:14px;padding:0.7rem 0.9rem;margin-bottom:0.75rem;box-shadow:0 4px 14px rgba(56,189,248,0.14);">
+          <div style="font-size:0.76rem;font-weight:800;color:#e0f2fe;">
+            🔥 Day ${prog.dayNumber} &bull; Streak: <b style="color:#fbbf24;">${prog.streakDays}d</b> &bull; ${isQuotaFinished ? '<b style="color:#fde047;">Daily Limit Reached!</b>' : '🎟️ Free Tickets • No Repeat'}
           </div>
-          ${allowAd ? `<button type="button" onclick="TapEngine.watchAdForExtraCommonTasks()" style="padding:0.4rem 0.75rem;border-radius:8px;border:1px solid ${theme.border};background:${theme.btnBg};color:#fff;font-size:0.74rem;font-weight:900;cursor:pointer;">📺 Watch Ad (+${(cfg.dailyProgression && cfg.dailyProgression.adExtraTaskCount) || 5} Tasks)</button>` : ''}
+          ${(allowAd && isQuotaFinished) ? `<button type="button" id="btnWatchAdRenewCommon" onclick="TapEngine.watchAdForExtraCommonTasks()" style="padding:0.46rem 0.9rem;border-radius:10px;border:1px solid #bae6fd;background:${theme.btnBg};color:#fff;font-size:0.76rem;font-weight:900;cursor:pointer;">📺 Watch Ad (+${renewCount} Renew Tasks)</button>` : ''}
         </div>
       `;
     }
 
-    // Star VIP Plan Gate Banner
+    // Star Unlock Tracker Banner (Every N Google Form Tasks = 1 Star Task Unlock — VIP Plan Removed)
     if (cat === 'star') {
-      const vip = getVipPlanState();
-      if (!vip.active) {
-        const minPlanCost = (vip.plans || []).filter(p => p.enabled !== false).reduce((m, p) => Math.min(m, p.costStars), Infinity);
-        const startText = Number.isFinite(minPlanCost) ? `Plans starting at ⭐ ${minPlanCost.toLocaleString()}` : '500 / 1,000 / 5,000 Stars';
-        bannerHtml += `
-          <div style="background:${theme.cardBg};border:1.5px solid ${theme.border};border-radius:14px;padding:0.9rem;margin-bottom:0.85rem;box-shadow:${theme.glow};">
-            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
-              <div>
-                <div style="font-weight:900;color:#fde047;font-size:0.92rem;">👑 VIP Star Plan Required</div>
-                <div style="font-size:0.74rem;color:#cbd5e1;margin-top:2px;">${startText} • Choose 500, 1,000, or 5,000 ⭐ VIP Pass</div>
+      const starProg = getStarUnlockProgress();
+      const neededMore = Math.max(0, starProg.globalReq - starProg.availableGoogleCredits);
+      bannerHtml += `
+        <div id="starGoogleUnlockBanner" style="background:${theme.cardBg};border:1.5px solid ${theme.border};border-radius:14px;padding:0.8rem 0.9rem;margin-bottom:0.85rem;box-shadow:${theme.glow};">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+            <div>
+              <div style="font-weight:900;color:#fde047;font-size:0.86rem;">📝 ${starProg.globalReq} Google Form Tasks = 1 ⭐ Star Unlock</div>
+              <div style="font-size:0.72rem;color:#e9d5ff;margin-top:2px;">
+                Google Done: <b>${starProg.googleDone}</b> &bull; Ready Unlocks: <b style="color:#34d399;">${starProg.availableUnlocks}</b> (${starProg.availableGoogleCredits}/${starProg.globalReq} credits)
               </div>
-              <button type="button" id="btnOpenVipPlansGate" onclick="TapEngine.promptBuyVipPlan()" style="padding:0.5rem 0.95rem;border-radius:10px;border:none;background:${theme.btnBg};color:#fff;font-weight:900;font-size:0.78rem;cursor:pointer;">👑 Unlock VIP Plans</button>
             </div>
-          </div>`;
-        containerEl.innerHTML = bannerHtml;
-        return;
-      } else {
-        const daysLeft = Math.max(1, Math.ceil((vip.expiresAt - Date.now()) / 86400000));
-        bannerHtml += `
-          <div style="background:${theme.pillBg};border:1px solid ${theme.border};border-radius:12px;padding:0.6rem 0.85rem;margin-bottom:0.75rem;display:flex;justify-content:space-between;align-items:center;font-size:0.75rem;font-weight:800;color:#fde047;">
-            <span>👑 ${escapeHtml(vip.activePlanTitle || 'VIP Star Plan')} Active &bull; ${daysLeft}d left</span>
-            <span>Daily Allowance: ${vip.usedToday}/${vip.dailyTasksLimit}</span>
-          </div>`;
-      }
+            ${starProg.availableUnlocks <= 0 ? `<button type="button" id="btnGoGoogleFormFromStar" onclick="window.location.href='index.html?cat=google'" style="padding:0.46rem 0.88rem;border-radius:10px;border:1px solid #a5b4fc;background:linear-gradient(135deg,#6366f1,#4f46e5);color:#fff;font-weight:900;font-size:0.74rem;cursor:pointer;white-space:nowrap;">📝 Need ${neededMore} More ➜</button>` : `<span style="padding:0.38rem 0.78rem;border-radius:999px;background:rgba(16,185,129,0.22);border:1px solid #34d399;color:#34d399;font-size:0.72rem;font-weight:900;">🔓 ${starProg.availableUnlocks} Ready!</span>`}
+          </div>
+        </div>`;
     }
 
-    // Filter out expired quiz tasks if timer expired
+    // Filter out expired quiz or ultra tasks automatically once timer expires
     const filteredVisible = visibleTasks.filter(t => {
       const timing = getTaskTimingStatus(t);
       if (cat === 'quiz' && timing.status === 'expired' && t.hideOnExpire !== false) return false;
+      if (cat === 'ultra' && timing.status === 'expired') return false;
       return true;
     });
 
@@ -1176,28 +1832,14 @@
     if (typeof window.runRewardedAd === 'function') {
       await window.runRewardedAd();
     }
-    const totalBonus = grantAdExtraCommonTasks();
+    const added = grantAdExtraCommonTasks();
     refreshAllTaskViews();
-    alert(`📺 Ad Completed! Additional daily free Common Tasks unlocked (+${totalBonus} bonus limit today).`);
+    alert(`📺 Ad Completed! Renewed +${added} extra Common Tasks for today.`);
   }
 
   async function promptBuyVipPlan() {
-    if (typeof window.openVipSubscriptionModal === 'function') {
-      window.openVipSubscriptionModal();
-      return;
-    }
-    const vip = getVipPlanState();
-    if (vip.active) {
-      alert(`👑 VIP Star Plan is already active (${vip.remainingToday}/${vip.dailyTasksLimit} tasks left today).`);
-      return;
-    }
-    const res = await purchaseConfiguredVipPlan();
-    if (!res.ok) {
-      alert(`❌ ${res.error}`);
-      return;
-    }
-    refreshAllTaskViews();
-    alert(`🎉 VIP Star Plan Activated!`);
+    alert('VIP Plan has been removed! Complete 2 Google Form Tasks to unlock 1 Star Task.');
+    return { ok: false, error: 'VIP Plan removed.' };
   }
 
   function refreshAllTaskViews() {
@@ -1252,13 +1894,25 @@
     getTaskCostInfo,
     getTaskRewardInfo,
     getTaskTimingStatus,
+    getCommonCompletedCount,
+    getQuizTargetCommonCount,
+    getGoogleCompletedIds,
+    getGoogleCompletedCount,
+    getStarRequiredGoogleCount,
+    getStarUnlockProgress,
     buildProGroupBundle,
+    buildProGroupBundles,
     unlockProGroup,
     unlockSingleTask,
     handleOpenTask,
     openVerifyModal,
     closeVerifyModal,
     submitTaskVerification,
+    getPendingPrizesMap,
+    openTaskPrizePopup,
+    closeTaskPrizePopup,
+    claimTaskPrizeFromPopup,
+    openTenTaskSponsorLinks,
     watchAdForExtraCommonTasks,
     renderCategoryIntoContainer,
     refreshAllTaskViews
@@ -1269,4 +1923,7 @@
   window.closeVerifyModal = closeVerifyModal;
   window.submitTaskVerification = submitTaskVerification;
   window.submitVerification = submitTaskVerification;
+  window.openTaskPrizePopup = openTaskPrizePopup;
+  window.closeTaskPrizePopup = closeTaskPrizePopup;
+  window.claimTaskPrizeFromPopup = claimTaskPrizeFromPopup;
 })();

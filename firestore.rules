@@ -1,0 +1,162 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function adminLockDoc() {
+      return get(/databases/$(database)/documents/system/admin_lock);
+    }
+
+    // Strict Single-Person Admin verification backed by active non-expired system/admin_lock
+    function isSingleAdmin() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/system/admin_lock)
+        && adminLockDoc().data.active == true
+        && adminLockDoc().data.adminUser == '400@kp'
+        && adminLockDoc().data.holderAuthUid == request.auth.uid
+        && adminLockDoc().data.updatedAt is number
+        && (request.time.toMillis() - adminLockDoc().data.updatedAt) <= 180000;
+    }
+
+    function isValidNonNegNum(data, key) {
+      return !(key in data) || (data[key] is number && data[key] >= 0);
+    }
+
+    function isValidCurrencyFields(data) {
+      return isValidNonNegNum(data, 'coins')
+        && isValidNonNegNum(data, 'stars')
+        && isValidNonNegNum(data, 'tickets')
+        && isValidNonNegNum(data, 'diamonds')
+        && isValidNonNegNum(data, 'ultraCredits')
+        && isValidNonNegNum(data, 'ultraTotalCompleted');
+    }
+
+    function isOwnerUserDoc(userId) {
+      return isSignedIn() && (
+        userId == request.auth.uid
+        || (resource != null && ('ownerAuthUid' in resource.data) && resource.data.ownerAuthUid == request.auth.uid)
+        || (resource == null && (!('ownerAuthUid' in request.resource.data) || request.resource.data.ownerAuthUid == request.auth.uid))
+        || (resource != null && !('ownerAuthUid' in resource.data))
+      );
+    }
+
+    // 1. Player Profiles & Balances
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && isValidCurrencyFields(request.resource.data)
+        && (!('role' in request.resource.data) || request.resource.data.role in ['player', 'vip'] || isSingleAdmin())
+        && (!('status' in request.resource.data) || request.resource.data.status in ['active', 'suspended']);
+      allow update: if (isSingleAdmin() || isOwnerUserDoc(userId))
+        && isValidCurrencyFields(request.resource.data)
+        && (isSingleAdmin() || !('role' in request.resource.data) || request.resource.data.role in ['player', 'vip'])
+        && (!('status' in request.resource.data) || request.resource.data.status in ['active', 'suspended']);
+      allow delete: if isSingleAdmin();
+    }
+
+    // 2. Per-Player Game & Mini-App State
+    match /players_data/{docId} {
+      allow read: if isSignedIn()
+        && (isSingleAdmin()
+          || docId.matches('^' + request.auth.uid + '_.*')
+          || (resource != null && resource.data.ownerAuthUid == request.auth.uid));
+      allow create, update: if isSignedIn()
+        && (isSingleAdmin()
+          || docId.matches('^' + request.auth.uid + '_.*')
+          || !('ownerAuthUid' in request.resource.data)
+          || request.resource.data.ownerAuthUid == request.auth.uid);
+      allow delete: if isSingleAdmin();
+    }
+
+    // 3. Single-Person Admin Exclusive Access Lock
+    match /system/admin_lock {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.resource.data.active is bool
+        && request.resource.data.updatedAt is number
+        && (request.resource.data.active == false
+          || (request.resource.data.adminUser == '400@kp'
+            && request.resource.data.holderAuthUid == request.auth.uid));
+      allow update: if isSignedIn()
+        && request.resource.data.active is bool
+        && request.resource.data.updatedAt is number
+        && (
+          resource.data.active != true
+          || (request.time.toMillis() - resource.data.updatedAt) > 120000
+          || resource.data.holderAuthUid == request.auth.uid
+        )
+        && (request.resource.data.active == false
+          || (request.resource.data.adminUser == '400@kp'
+            && request.resource.data.holderAuthUid == request.auth.uid));
+      allow delete: if isSingleAdmin();
+    }
+
+    // 4. Global System Configs (Tasks, App Settings, Event, Ad Config, Sessions)
+    match /system/{configDoc} {
+      allow read: if true;
+      allow write: if configDoc != 'admin_lock' && isSingleAdmin();
+    }
+
+    // 5. Referral Codes & Legacy Mirrored System Config Docs
+    match /referral_codes/{codeId} {
+      allow read: if codeId in ['GLOBAL_TASKS', 'GLOBAL_APP_SETTINGS', 'LEADERBOARD_SESSIONS'] || isSignedIn();
+      allow create, update: if (
+        (codeId in ['GLOBAL_TASKS', 'GLOBAL_APP_SETTINGS', 'LEADERBOARD_SESSIONS'] && isSingleAdmin())
+        || (
+          !(codeId in ['GLOBAL_TASKS', 'GLOBAL_APP_SETTINGS', 'LEADERBOARD_SESSIONS'])
+          && isSignedIn()
+          && request.resource.data.code is string
+          && isValidNonNegNum(request.resource.data, 'rewardCoins')
+          && (!('rewardCoins' in request.resource.data) || request.resource.data.rewardCoins <= 500)
+        )
+      );
+      allow delete: if isSingleAdmin();
+    }
+
+    // 6. Referral Redemptions (Create-once per redemption pair)
+    match /referral_redemptions/{redId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.resource.data.code is string
+        && request.resource.data.redeemedByUserId is string
+        && request.resource.data.redeemedAt is number
+        && isValidNonNegNum(request.resource.data, 'rewardCoins')
+        && (!('rewardCoins' in request.resource.data) || request.resource.data.rewardCoins <= 500);
+      allow update, delete: if isSingleAdmin();
+    }
+
+    // 7. Wallet Voucher / Reward Withdrawal Requests
+    match /withdrawals/{wdId} {
+      allow read: if isSingleAdmin()
+        || (isSignedIn() && (
+          resource.data.ownerAuthUid == request.auth.uid
+          || resource.data.userId == request.auth.uid
+        ));
+      allow create: if isSignedIn()
+        && request.resource.data.status == 'pending'
+        && request.resource.data.amount is number
+        && request.resource.data.amount > 0
+        && isValidNonNegNum(request.resource.data, 'starCost')
+        && request.resource.data.userId is string;
+      allow update, delete: if isSingleAdmin();
+    }
+
+    // 8. Player Feedback & Support Messages (Authenticated create; Single Admin read/delete)
+    match /feedbacks/{fbId} {
+      allow read: if isSingleAdmin();
+      allow create: if isSignedIn()
+        && request.resource.data.message is string
+        && request.resource.data.message.size() > 0
+        && request.resource.data.message.size() <= 4000;
+      allow update, delete: if isSingleAdmin();
+    }
+
+    // Default Deny Everything Else
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
